@@ -20,12 +20,11 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 
 配置文件：`<agent-dir>/jev-suggest.json`，默认 `~/.pi/agent/jev-suggest.json`（或 `PI_CODING_AGENT_DIR` 指定的目录）。改完执行 `/reload`。
 
-下面示例把快捷键改成了 `alt+j`；默认值是 `ctrl+space`。
+下面示例保留默认快捷键 `ctrl+space`。修改前请先看[快捷键兼容性](#快捷键兼容性)。
 
 ```json
 {
   "locale": "zh-CN",
-  "shortcut": "alt+j",
   "jev": {
     "url": "https://api.typesafe.ai/v1/systemone",
     "model": "jev-1.13.0",
@@ -51,7 +50,15 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 | `tags` | `[]` | 自定义 tag，追加在内置 8 个之后 |
 | `options` | `{}` | 按 tag id 替换该 tag 的候选池 |
 
-挑快捷键前先跑 `/hotkeys`，确认没有冲突。
+### 快捷键兼容性
+
+默认键是 `ctrl+space`，不是 `alt+j`。要修改，在 `<agent-dir>/jev-suggest.json` 中设置 `shortcut`，然后执行 `/reload`。
+
+- `ctrl+space` 可能被系统或输入法拦截，例如 macOS 的输入源切换。如果按下后切换输入源而不是插入建议，需要修改系统绑定，或为扩展选择其他快捷键。
+- `alt+j` 不是通用的替代方案。macOS 上 Alt 对应 Option；取决于终端设置和键盘布局，Option+J 可能输入字符，而不是发送带 Alt 修饰的按键。只有终端将它作为 Alt/Meta 而非文本发送时才能使用。
+- 用 `/hotkeys` 查看当前 Pi 绑定，同时检查其他扩展、终端和系统快捷键。`/hotkeys` 无法发现 Pi 之外的按键拦截。选定后，在建议可见时用当前终端实际验证。
+
+候选末尾显示的是配置值；提示可见不代表终端一定能发送该按键。
 
 ### 添加自己的 tag
 
@@ -80,8 +87,7 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 ```json
 {
   "options": {
-    "verify": ["跑一下测试", "把输出贴出来", "检查一下调用方"],
-    "ship": ["先发测试环境"]
+    "verify": ["跑一下测试", "把输出贴出来", "检查一下调用方"]
   }
 }
 ```
@@ -153,11 +159,15 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 
 复制 `data/locales/en.json`，翻译 `ui` 和每个 tag 的 `label`/候选，保存为 `data/locales/<name>.json`，无需改代码即可被识别。欢迎 PR。
 
-只想自己用某种语言，就用 `localeFile` 指向私有的那份：
+只想自己用某种语言，可创建 `<agent-dir>/jev-suggest/locales/`，将翻译后的副本保存在那里，与已安装包分开，避免包更新覆盖。这是建议的私有数据位置，不是自动发现语言文件的目录。
+
+使用默认 agent 目录时，在 `~/.pi/agent/jev-suggest.json` 中设置如下字段（若已有 `locale`，先移除），然后执行 `/reload`：
 
 ```json
-{ "localeFile": "~/my-jev-locale.json" }
+{ "localeFile": "~/.pi/agent/jev-suggest/locales/my.json" }
 ```
+
+若设置了 `PI_CODING_AGENT_DIR`，请改用该目录内的路径。`localeFile` 不展开环境变量，相对路径也不以 agent 目录为基准；请使用绝对路径，或用户主目录下的 `~/` 路径。
 
 ## 限制
 

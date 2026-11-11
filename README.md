@@ -20,12 +20,11 @@ Restart Pi. Suggestions require `tui` mode and an available UI. Automatic reques
 
 Config file: `<agent-dir>/jev-suggest.json`, by default `~/.pi/agent/jev-suggest.json` (or the directory set by `PI_CODING_AGENT_DIR`). Run `/reload` after editing.
 
-The example below overrides the shortcut to `alt+j`; the default is `ctrl+space`.
+This example keeps the default shortcut, `ctrl+space`. See [Shortcut compatibility](#shortcut-compatibility) before changing it.
 
 ```json
 {
   "locale": "en",
-  "shortcut": "alt+j",
   "jev": {
     "url": "https://api.typesafe.ai/v1/systemone",
     "model": "jev-1.13.0",
@@ -53,7 +52,15 @@ Missing file means the defaults below, with automatic locale detection. A malfor
 
 Self-hosting JEV usually means setting `jev.url`, `jev.model` and `jev.keyEnv`, and `identity: "none"`.
 
-Check `/hotkeys` before picking a shortcut so it does not collide.
+### Shortcut compatibility
+
+The default is `ctrl+space`, not `alt+j`. Configure `shortcut` in `<agent-dir>/jev-suggest.json`, then run `/reload`.
+
+- `ctrl+space` may be intercepted by the operating system or an input method (for example, macOS input-source switching). If it switches input sources instead of inserting the suggestion, change that system binding or choose another extension shortcut.
+- `alt+j` is not a universally safe alternative. On macOS, Alt is Option; depending on the terminal and keyboard layout, Option+J may type a character instead of sending an Alt-modified key. It only works if the terminal forwards it as Alt/Meta rather than text.
+- Check `/hotkeys` for active Pi bindings and check other extensions, terminal bindings and system shortcuts too. `/hotkeys` cannot detect keys intercepted outside Pi. Verify the chosen key in your terminal with a visible suggestion.
+
+The widget shows the configured key; displaying a hint does not mean the terminal can deliver it.
 
 ### Add your own tags
 
@@ -82,8 +89,7 @@ Rules: `id` must match `^[a-z][a-z0-9_-]{0,31}$`, must not reuse a built-in id (
 ```json
 {
   "options": {
-    "verify": ["run the tests", "paste the output", "check the callers"],
-    "ship": ["deploy to staging"]
+    "verify": ["run the tests", "paste the output", "check the callers"]
   }
 }
 ```
@@ -155,11 +161,15 @@ UI strings are templates: `{label}`, `{text}`, `{hint}`, `{shortcut}`, `{env}`, 
 
 Copy `data/locales/en.json`, translate `ui` and each tag's `label`/`replies`, save it as `data/locales/<name>.json`, and it appears in `availableLocales()` without code changes. Pull requests welcome.
 
-To keep your language private, point `localeFile` at your own copy instead:
+To keep your language private, create `<agent-dir>/jev-suggest/locales/` and save your translated copy there, outside the installed package so package updates do not overwrite it. This is a suggested location for your own data, not an auto-discovered locale directory.
+
+With the default agent directory, set this in `~/.pi/agent/jev-suggest.json` (remove `locale` if present), then run `/reload`:
 
 ```json
-{ "localeFile": "~/my-jev-locale.json" }
+{ "localeFile": "~/.pi/agent/jev-suggest/locales/my.json" }
 ```
+
+If you set `PI_CODING_AGENT_DIR`, use a path inside that directory instead. `localeFile` does not expand environment variables or resolve relative paths against the agent directory; use an absolute path, or a `~/` path under your home directory.
 
 ## Limits
 
