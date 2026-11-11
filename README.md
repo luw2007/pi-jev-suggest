@@ -20,6 +20,8 @@ Restart Pi. The extension only runs in `tui` mode; `-p`, `--mode json` and other
 
 Config file: `<agent-dir>/jev-suggest.json`, by default `~/.pi/agent/jev-suggest.json` (or the directory set by `PI_CODING_AGENT_DIR`). Run `/reload` after editing.
 
+The example below overrides the shortcut to `alt+j`; the default is `ctrl+space`.
+
 ```json
 {
   "locale": "en",
@@ -38,7 +40,8 @@ Missing file means these defaults. A malformed file, an unknown field, or an inv
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `locale` | system locale, else `en` | UI and reply language: `en`, `zh-CN` |
+| `locale` | system locale, else `en` | UI and reply language; must be a file in `data/locales/` (`en`, `zh-CN`) |
+| `localeFile` | – | Path to your own locale JSON; replaces `locale`, and the two cannot both be set |
 | `shortcut` | `ctrl+space` | Key that inserts the suggestion; syntax from Pi's `docs/keybindings.md` |
 | `jev.url` | TypeSafe public | JEV choice endpoint |
 | `jev.model` | `jev-1.13.0` | `model` in the request body |
@@ -94,10 +97,10 @@ An `options` key that is not a known tag is a config error, so a typo cannot sil
 3. One reply is picked at random from that tag's pool and shown:
 
 ```text
-[jev] suggestion (verify): run the smallest verification    alt+j to insert
+[jev] suggestion (verify): run the smallest verification    ctrl+space to insert
 ```
 
-4. The shortcut writes it into the editor. If the editor already has text, you get a notice instead of an overwrite.
+4. The shortcut writes it into the editor; the hint always shows the shortcut you configured. If the editor already has text, you get a notice instead of an overwrite.
 5. `/jev-suggest` refreshes manually and reports failures (HTTP status, timeout, off-contract response).
 
 Typing, a new run, and a new session all clear the suggestion. Requests carry a deadline and are cancelled, so late results are dropped.
@@ -129,9 +132,26 @@ Expected answer:
 
 `choice` must be a key of `criteria`; `model` is checked per `jev.identity`; other fields are ignored.
 
+## Data files and compatibility
+
+Tags, labels, replies and UI text are data, not code:
+
+- `data/tags.json` — the classification set: tag `id` plus the model-facing `criteria` (English by design, so the request is stable across languages).
+- `data/locales/<name>.json` — `ui` templates and a `label` plus reply pool for every tag id.
+
+Both carry `"schema": 1`. The loader checks the schema, requires every UI key and every tag id, and **ignores unknown keys**, so a newer data file still works with an older extension. A breaking shape change bumps `schema` and the loader refuses it with the file and the reason.
+
+UI strings are templates: `{label}`, `{text}`, `{hint}`, `{shortcut}`, `{env}`, `{error}`, `{detail}`.
+
 ## Add a language
 
-Built-in tags keep English `criteria` so the JEV request is stable; only labels, replies and UI text are translated. To add a locale, copy `src/locales/en.ts`, translate the strings and the eight reply pools, then register it in `src/locales/index.ts`. Pull requests welcome.
+Copy `data/locales/en.json`, translate `ui` and each tag's `label`/`replies`, save it as `data/locales/<name>.json`, and it appears in `availableLocales()` without code changes. Pull requests welcome.
+
+To keep your language private, point `localeFile` at your own copy instead:
+
+```json
+{ "localeFile": "~/my-jev-locale.json" }
+```
 
 ## Limits
 

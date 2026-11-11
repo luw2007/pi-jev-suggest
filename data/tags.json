@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "tags": [
+    {
+      "id": "continue",
+      "criteria": "Proceed with the current work without new analysis or confirmation."
+    },
+    {
+      "id": "plan",
+      "criteria": "Analyze, plan, or explain before changing anything."
+    },
+    {
+      "id": "correct",
+      "criteria": "Challenge or correct the assistant's premise, evidence, or conclusion."
+    },
+    {
+      "id": "simplify",
+      "criteria": "Reduce complexity, over-engineering, or scope."
+    },
+    {
+      "id": "status",
+      "criteria": "Ask about progress, current state, blockers, or remaining work."
+    },
+    {
+      "id": "verify",
+      "criteria": "Require verification, testing, or delivery evidence."
+    },
+    {
+      "id": "style",
+      "criteria": "Change how the answer is written: language, length, or format."
+    },
+    {
+      "id": "feedback",
+      "criteria": "Acknowledge, approve, thank, or give brief evaluative feedback."
+    }
+  ]
+}

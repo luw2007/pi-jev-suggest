@@ -1,20 +1,22 @@
 /**
- * Reads `<agent-dir>/jev-suggest.json`. Missing file means defaults; anything malformed is
- * rejected as a whole so a typo cannot silently fall back to behaviour the user did not choose.
+ * Reads `<agent-dir>/jev-suggest.json`. Missing file means defaults; anything malformed is rejected
+ * as a whole so a typo cannot silently fall back to behaviour the user did not choose.
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { LOCALE_NAMES } from "./locales/index.ts";
-import { BUILTIN_TAG_IDS, type CustomTag } from "./tags.ts";
 import type { JevEndpoint, JevIdentity } from "./jev.ts";
+import type { CustomTag } from "./tags.ts";
 
 export interface SuggestConfig {
-  locale: string;
+  /** Built-in locale name; absent means "detect from the environment". */
+  locale?: string;
+  /** User-supplied locale JSON; mutually exclusive with `locale`. */
+  localeFile?: string;
   shortcut: string;
   jev: JevEndpoint;
   tags: readonly CustomTag[];
-  /** Reply pools that replace a tag's built-in pool, keyed by tag id. */
+  /** Reply pools that replace a tag's pool, keyed by tag id. */
   options: Readonly<Record<string, readonly string[]>>;
 }
 
@@ -25,6 +27,7 @@ type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 
 const IDENTITIES: readonly JevIdentity[] = ["exact", "prefix", "none"];
 const TAG_ID = /^[a-z][a-z0-9_-]{0,31}$/;
+const LOCALE_NAME = /^[A-Za-z0-9_-]{1,32}$/;
 const MODIFIERS = new Set(["ctrl", "shift", "alt", "super"]);
 const NAMED_KEYS = new Set([
   "escape",
@@ -48,10 +51,10 @@ const NAMED_KEYS = new Set([
   ...Array.from({ length: 12 }, (_, index) => `f${index + 1}`),
 ]);
 const SYMBOL_KEYS = new Set("`-=[];',./!@#$%^&*()_+|~{}:<>?".split(""));
-const TOP_KEYS = ["locale", "shortcut", "jev", "tags", "options"];
+const TOP_KEYS = ["locale", "localeFile", "shortcut", "jev", "tags", "options"];
 const JEV_KEYS = ["url", "model", "keyEnv", "identity", "timeoutMs"];
 
-export const DEFAULTS: Omit<SuggestConfig, "locale"> = {
+export const DEFAULTS: Omit<SuggestConfig, "locale" | "localeFile"> = {
   shortcut: "ctrl+space",
   jev: {
     url: "https://api.typesafe.ai/v1/systemone",
@@ -73,7 +76,7 @@ export function isValidShortcut(value: string): boolean {
   return /^[a-z0-9]$/.test(key) || NAMED_KEYS.has(key) || SYMBOL_KEYS.has(key);
 }
 
-function configPath(): string {
+export function configPath(): string {
   const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
   return join(agentDir, "jev-suggest.json");
 }
@@ -87,7 +90,7 @@ function stringList(value: unknown): readonly string[] | undefined {
   return value.every((item) => typeof item === "string" && item.trim() !== "") ? (value as string[]) : undefined;
 }
 
-function parseTags(value: unknown, fail: Fail): Parsed<readonly CustomTag[]> {
+function parseTags(value: unknown, builtinIds: readonly string[], fail: Fail): Parsed<readonly CustomTag[]> {
   if (value === undefined) return { ok: true, value: [] };
   if (!Array.isArray(value)) return fail("tags 必须是数组");
 
@@ -100,7 +103,7 @@ function parseTags(value: unknown, fail: Fail): Parsed<readonly CustomTag[]> {
 
     const id = entry.id;
     if (typeof id !== "string" || !TAG_ID.test(id)) return fail(`${at}.id 必须是 ${TAG_ID.source} 形式的标识符`);
-    if (BUILTIN_TAG_IDS.includes(id)) return fail(`${at}.id 与内置标签重名，改内置标签请用 options`);
+    if (builtinIds.includes(id)) return fail(`${at}.id 与内置标签重名，改内置标签请用 options`);
     if (tags.some((tag) => tag.id === id)) return fail(`${at}.id 重复：${id}`);
 
     const label = entry.label;
@@ -115,7 +118,11 @@ function parseTags(value: unknown, fail: Fail): Parsed<readonly CustomTag[]> {
   return { ok: true, value: tags };
 }
 
-function parseOptions(value: unknown, tagIds: readonly string[], fail: Fail): Parsed<Readonly<Record<string, readonly string[]>>> {
+function parseOptions(
+  value: unknown,
+  tagIds: readonly string[],
+  fail: Fail,
+): Parsed<Readonly<Record<string, readonly string[]>>> {
   if (value === undefined) return { ok: true, value: {} };
   if (!isRecord(value)) return fail("options 必须是对象");
 
@@ -131,16 +138,21 @@ function parseOptions(value: unknown, tagIds: readonly string[], fail: Fail): Pa
   return { ok: true, value: options };
 }
 
-export function parseConfig(raw: unknown, path: string): ConfigResult {
+export function parseConfig(raw: unknown, path: string, builtinIds: readonly string[]): ConfigResult {
   const fail: Fail = (error) => ({ ok: false, error: `${path} ${error}` });
   if (!isRecord(raw)) return fail("顶层必须是对象");
 
   const unknown = Object.keys(raw).filter((key) => !TOP_KEYS.includes(key));
   if (unknown.length > 0) return fail(`存在未知字段：${unknown.join(", ")}`);
 
-  const locale = raw.locale ?? "en";
-  if (typeof locale !== "string" || !LOCALE_NAMES.includes(locale)) {
-    return fail(`locale 只能是 ${LOCALE_NAMES.join(" / ")}：${JSON.stringify(raw.locale)}`);
+  const locale = raw.locale;
+  const localeFile = raw.localeFile;
+  if (locale !== undefined && localeFile !== undefined) return fail("locale 与 localeFile 只能写一个");
+  if (locale !== undefined && (typeof locale !== "string" || !LOCALE_NAME.test(locale))) {
+    return fail(`locale 不合法：${JSON.stringify(locale)}`);
+  }
+  if (localeFile !== undefined && (typeof localeFile !== "string" || localeFile.trim() === "")) {
+    return fail("localeFile 必须是非空路径");
   }
 
   const shortcut = raw.shortcut === undefined ? DEFAULTS.shortcut : raw.shortcut;
@@ -154,7 +166,9 @@ export function parseConfig(raw: unknown, path: string): ConfigResult {
   if (unknownJev.length > 0) return fail(`jev 存在未知字段：${unknownJev.join(", ")}`);
 
   const url = jev.url ?? DEFAULTS.jev.url;
-  if (typeof url !== "string" || !/^https?:\/\//.test(url)) return fail(`jev.url 必须是 http(s) 地址：${JSON.stringify(url)}`);
+  if (typeof url !== "string" || !/^https?:\/\//.test(url)) {
+    return fail(`jev.url 必须是 http(s) 地址：${JSON.stringify(url)}`);
+  }
 
   const model = jev.model ?? DEFAULTS.jev.model;
   if (typeof model !== "string" || model.trim() === "") return fail("jev.model 必须是非空字符串");
@@ -174,15 +188,16 @@ export function parseConfig(raw: unknown, path: string): ConfigResult {
     return fail(`jev.timeoutMs 必须是 500-60000 的整数：${JSON.stringify(timeoutMs)}`);
   }
 
-  const tags = parseTags(raw.tags, fail);
+  const tags = parseTags(raw.tags, builtinIds, fail);
   if (!tags.ok) return tags;
-  const options = parseOptions(raw.options, [...BUILTIN_TAG_IDS, ...tags.value.map((tag) => tag.id)], fail);
+  const options = parseOptions(raw.options, [...builtinIds, ...tags.value.map((tag) => tag.id)], fail);
   if (!options.ok) return options;
 
   return {
     ok: true,
     config: {
-      locale,
+      ...(locale === undefined ? {} : { locale }),
+      ...(localeFile === undefined ? {} : { localeFile: expandHome(localeFile) }),
       shortcut,
       jev: { url, model, keyEnv, identity: identity as JevIdentity, timeoutMs },
       tags: tags.value,
@@ -191,13 +206,17 @@ export function parseConfig(raw: unknown, path: string): ConfigResult {
   };
 }
 
-export function loadConfig(): ConfigResult {
+function expandHome(path: string): string {
+  return path === "~" || path.startsWith("~/") ? join(homedir(), path.slice(1)) : path;
+}
+
+export function loadConfig(builtinIds: readonly string[]): ConfigResult {
   const path = configPath();
   let text: string;
   try {
     text = readFileSync(path, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, config: { locale: "en", ...DEFAULTS } };
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, config: { ...DEFAULTS } };
     return { ok: false, error: `${path} 读取失败：${(error as Error).message}` };
   }
 
@@ -207,5 +226,5 @@ export function loadConfig(): ConfigResult {
   } catch (error) {
     return { ok: false, error: `${path} 不是合法 JSON：${(error as Error).message}` };
   }
-  return parseConfig(raw, path);
+  return parseConfig(raw, path, builtinIds);
 }

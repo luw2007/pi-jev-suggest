@@ -20,6 +20,8 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 
 配置文件：`<agent-dir>/jev-suggest.json`，默认 `~/.pi/agent/jev-suggest.json`（或 `PI_CODING_AGENT_DIR` 指定的目录）。改完执行 `/reload`。
 
+下面示例把快捷键改成了 `alt+j`；默认值是 `ctrl+space`。
+
 ```json
 {
   "locale": "zh-CN",
@@ -38,7 +40,8 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 
 | 字段 | 默认 | 说明 |
 | --- | --- | --- |
-| `locale` | 系统语言，否则 `en` | 界面与候选语言：`en`、`zh-CN` |
+| `locale` | 系统语言，否则 `en` | 界面与候选语言，必须是 `data/locales/` 里的文件（`en`、`zh-CN`） |
+| `localeFile` | – | 你自己的语言 JSON 路径，会替换 `locale`；两者不能同时写 |
 | `shortcut` | `ctrl+space` | 把建议填入输入框的按键，语法见 Pi `docs/keybindings.md` |
 | `jev.url` | TypeSafe 公网 | JEV choice 端点 |
 | `jev.model` | `jev-1.13.0` | 请求体里的 `model` |
@@ -92,10 +95,10 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 3. 从该 tag 的候选池随机取一条显示：
 
 ```text
-[jev] 建议（验证交付）：跑一下最小验证    alt+j 插入
+[jev] 建议（验证交付）：跑一下最小验证    ctrl+space 插入
 ```
 
-4. 快捷键把建议写入输入框；输入框已有内容时只提示、不覆盖。
+4. 快捷键把建议写入输入框，末尾提示始终显示你配置的按键；输入框已有内容时只提示、不覆盖。
 5. `/jev-suggest` 手动刷新，失败时报告具体原因（HTTP 状态、超时、响应不符合契约）。
 
 输入、新一轮运行、新会话都会清除建议；请求带超时与取消，过期结果丢弃。
@@ -127,9 +130,26 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 
 `choice` 必须落在 `criteria` 的键里；`model` 按 `jev.identity` 校验；其余字段被忽略。
 
+## 数据文件与兼容性
+
+标签、文案、候选都是数据，不是代码：
+
+- `data/tags.json`：分类集合，即 tag 的 `id` 与给模型看的 `criteria`（刻意固定英文，保证请求跨语言稳定）。
+- `data/locales/<name>.json`：`ui` 模板，以及每个 tag 的 `label` 和候选池。
+
+两者都带 `"schema": 1`。加载器会校验 schema、要求 UI 键与 tag id 齐全，并且**忽略未知字段**，因此新数据文件可以在旧版扩展上继续工作；破坏性结构调整会提升 `schema`，旧版会直接拒绝并报出文件与原因。
+
+界面文案是模板：`{label}`、`{text}`、`{hint}`、`{shortcut}`、`{env}`、`{error}`、`{detail}`。
+
 ## 新增语言
 
-内置 tag 的 `criteria` 固定为英文，保证发给 JEV 的请求稳定；只有 label、候选和界面文案参与翻译。新增语言：复制 `src/locales/en.ts`，翻译字符串与 8 组候选池，然后在 `src/locales/index.ts` 注册。欢迎 PR。
+复制 `data/locales/en.json`，翻译 `ui` 和每个 tag 的 `label`/候选，保存为 `data/locales/<name>.json`，无需改代码即可被识别。欢迎 PR。
+
+只想自己用某种语言，就用 `localeFile` 指向私有的那份：
+
+```json
+{ "localeFile": "~/my-jev-locale.json" }
+```
 
 ## 限制
 

@@ -1,12 +1,25 @@
 /**
  * Pi extension: after a run settles, ask JEV which tag the user is about to type, then show one
  * randomly chosen reply from that tag's pool. The suggestion only fills the editor; it is never sent.
+ *
+ * No tag or UI text lives here: `data/tags.json`, `data/locales/*.json` or the user's own locale file
+ * supply every label, reply and message.
  */
 import { randomInt } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { loadConfig, type SuggestConfig } from "./config.ts";
+import {
+  format,
+  loadLocale,
+  loadLocaleFile,
+  loadTagSpecs,
+  pickLocale,
+  type Loaded,
+  type LocaleData,
+  type TagSpec,
+  type UIKey,
+} from "./data.ts";
 import { choose, describeFailure } from "./jev.ts";
-import { resolveLocale } from "./locales/index.ts";
 import { resolveTags, type Tag } from "./tags.ts";
 
 const WIDGET_KEY = "jev-suggest";
@@ -16,15 +29,39 @@ const QUESTION_TEXT = "Which single request is the user most likely to type next
 /** Trailing characters of each side of the exchange sent to JEV. */
 const STATE_CHARS = 1_200;
 
-let config: SuggestConfig | undefined;
-let tags: readonly Tag[] = [];
-let criteria: Record<string, string> = {};
-let lastUser = "";
-let lastAssistant = "";
-let runReplied = false;
-let suggestion: { tag: Tag; text: string } | undefined;
-let generation = 0;
-let inFlight: AbortController | undefined;
+type Setup =
+  | { ok: true; config: SuggestConfig; locale: LocaleData; tags: Tag[] }
+  | { ok: false; error: string; locale: LocaleData | undefined };
+
+/** English pack, so setup failures can still be phrased when the requested locale is unusable. */
+function englishPack(specs: readonly TagSpec[]): LocaleData | undefined {
+  const en = loadLocale("en", specs);
+  return en.ok ? en.value : undefined;
+}
+
+function resolveLocaleData(config: SuggestConfig, specs: readonly TagSpec[]): Loaded<LocaleData> {
+  if (config.localeFile) return loadLocaleFile(config.localeFile, specs);
+  const name = pickLocale(config.locale);
+  return name.ok ? loadLocale(name.value, specs) : name;
+}
+
+function setUp(): Setup {
+  const specs = loadTagSpecs();
+  if (!specs.ok) return { ok: false, error: specs.error, locale: undefined };
+
+  const loaded = loadConfig(specs.value.map((spec) => spec.id));
+  if (!loaded.ok) return { ok: false, error: loaded.error, locale: englishPack(specs.value) };
+
+  const locale = resolveLocaleData(loaded.config, specs.value);
+  if (!locale.ok) return { ok: false, error: locale.error, locale: englishPack(specs.value) };
+
+  return {
+    ok: true,
+    config: loaded.config,
+    locale: locale.value,
+    tags: resolveTags(specs.value, locale.value, loaded.config.tags, loaded.config.options),
+  };
+}
 
 function textOf(message: unknown): string {
   if (message === null || typeof message !== "object") return "";
@@ -41,13 +78,22 @@ function textOf(message: unknown): string {
 }
 
 export default function jevSuggest(pi: ExtensionAPI): void {
-  const loaded = loadConfig();
-  config = loaded.ok ? loaded.config : undefined;
-  const locale = resolveLocale(config?.locale);
-  if (config) {
-    tags = resolveTags(locale, config.tags, config.options);
-    criteria = Object.fromEntries(tags.map((tag) => [tag.id, tag.criteria]));
-  }
+  const setup = setUp();
+  const ui = setup.locale?.ui;
+  const config = setup.ok ? setup.config : undefined;
+  const tags: readonly Tag[] = setup.ok ? setup.tags : [];
+  const criteria: Record<string, string> = Object.fromEntries(tags.map((tag) => [tag.id, tag.criteria]));
+
+  let lastUser = "";
+  let lastAssistant = "";
+  let runReplied = false;
+  let suggestion: { text: string } | undefined;
+  let generation = 0;
+  let inFlight: AbortController | undefined;
+
+  /** Renders a locale message; falls back to the key name if the data is unusable. */
+  const say = (key: UIKey, vars: Readonly<Record<string, string>> = {}): string =>
+    ui === undefined ? key : format(ui[key], vars);
 
   const clear = (ctx: ExtensionContext): void => {
     suggestion = undefined;
@@ -55,14 +101,14 @@ export default function jevSuggest(pi: ExtensionAPI): void {
   };
 
   const request = async (ctx: ExtensionContext, verbose: boolean): Promise<void> => {
-    const active = config;
-    if (!active || ctx.mode !== "tui" || !ctx.hasUI) return;
+    if (!setup.ok || !config) return;
+    if (ctx.mode !== "tui" || !ctx.hasUI) return;
     // A suggestion must never overwrite what the user is already typing.
     if (ctx.ui.getEditorText().trim() !== "") return;
 
-    const key = process.env[active.jev.keyEnv];
+    const key = process.env[config.jev.keyEnv];
     if (key === undefined) {
-      if (verbose) ctx.ui.notify(locale.missingKey(active.jev.keyEnv), "warning");
+      if (verbose) ctx.ui.notify(say("missingKey", { env: config.jev.keyEnv }), "warning");
       return;
     }
 
@@ -74,7 +120,7 @@ export default function jevSuggest(pi: ExtensionAPI): void {
     clear(ctx);
 
     const result = await choose(
-      active.jev,
+      config.jev,
       key,
       { lastUserMessage: lastUser.slice(-STATE_CHARS), lastAssistantReply: lastAssistant.slice(-STATE_CHARS) },
       { id: QUESTION_ID, instructions: QUESTION_TEXT, criteria },
@@ -82,17 +128,16 @@ export default function jevSuggest(pi: ExtensionAPI): void {
     );
     if (current !== generation || controller.signal.aborted) return;
     if (!result.ok) {
-      if (verbose) ctx.ui.notify(locale.requestFailed(describeFailure(result.failure)), "error");
+      if (verbose) ctx.ui.notify(say("requestFailed", { detail: describeFailure(result.failure) }), "error");
       return;
     }
 
     const tag = tags.find((candidate) => candidate.id === result.choice);
     if (!tag) return;
     const text = tag.replies[randomInt(tag.replies.length)]!;
-    suggestion = { tag, text };
-    ctx.ui.setWidget(WIDGET_KEY, [locale.widget(tag.label, text, locale.hint(active.shortcut))], {
-      placement: "belowEditor",
-    });
+    suggestion = { text };
+    const line = say("widget", { label: tag.label, text, hint: say("hint", { shortcut: config.shortcut }) });
+    ctx.ui.setWidget(WIDGET_KEY, [line], { placement: "belowEditor" });
   };
 
   pi.on("session_start", (_event, ctx) => {
@@ -100,12 +145,12 @@ export default function jevSuggest(pi: ExtensionAPI): void {
     lastAssistant = "";
     runReplied = false;
     clear(ctx);
-    if (!loaded.ok) {
-      ctx.ui.notify(locale.configInvalid(loaded.error), "error");
+    if (!setup.ok) {
+      ctx.ui.notify(say("configInvalid", { error: setup.error }), "error");
       return;
     }
-    if (process.env[loaded.config.jev.keyEnv] === undefined) {
-      ctx.ui.setStatus(WIDGET_KEY, locale.missingKey(loaded.config.jev.keyEnv));
+    if (process.env[setup.config.jev.keyEnv] === undefined) {
+      ctx.ui.setStatus(WIDGET_KEY, say("missingKey", { env: setup.config.jev.keyEnv }));
     }
   });
 
@@ -138,11 +183,11 @@ export default function jevSuggest(pi: ExtensionAPI): void {
 
   if (config) {
     pi.registerShortcut(config.shortcut as Parameters<ExtensionAPI["registerShortcut"]>[0], {
-      description: locale.shortcutDescription,
+      description: say("shortcutDescription"),
       handler: (ctx: ExtensionContext) => {
         if (!suggestion) return;
         if (ctx.ui.getEditorText().trim() !== "") {
-          ctx.ui.notify(locale.editorNotEmpty, "warning");
+          ctx.ui.notify(say("editorNotEmpty"), "warning");
           return;
         }
         ctx.ui.setEditorText(suggestion.text);
@@ -152,10 +197,10 @@ export default function jevSuggest(pi: ExtensionAPI): void {
   }
 
   pi.registerCommand(COMMAND, {
-    description: locale.commandDescription,
+    description: say("commandDescription"),
     handler: async (_args, ctx) => {
-      if (!config) {
-        ctx.ui.notify(locale.configInvalid(loaded.ok ? "" : loaded.error), "error");
+      if (!setup.ok) {
+        ctx.ui.notify(say("configInvalid", { error: setup.error }), "error");
         return;
       }
       await request(ctx, true);

@@ -1,19 +1,20 @@
-import type { Locale } from "../tags.ts";
-
-export const en: Locale = {
-  name: "en",
-  widget: (label, text, hint) => `[jev] suggestion (${label}): ${text}${hint}`,
-  hint: (shortcut) => `    ${shortcut} to insert`,
-  editorNotEmpty: "Editor already has text; suggestion not inserted",
-  missingKey: (env) => `JEV suggestions unavailable: ${env} is not set`,
-  configInvalid: (error) => `jev-suggest config error, disabled: ${error}`,
-  requestFailed: (detail) => `jev-suggest: JEV request failed (${detail})`,
-  commandDescription: "Refresh the JEV suggestion and show it below the editor",
-  shortcutDescription: "Insert the JEV suggestion",
-  tags: {
-    continue: {
-      label: "continue",
-      replies: [
+{
+  "schema": 1,
+  "locale": "en",
+  "ui": {
+    "widget": "[jev] suggestion ({label}): {text}{hint}",
+    "hint": "    {shortcut} to insert",
+    "editorNotEmpty": "Editor already has text; suggestion not inserted",
+    "missingKey": "JEV suggestions unavailable: {env} is not set",
+    "configInvalid": "jev-suggest config error, disabled: {error}",
+    "requestFailed": "jev-suggest: JEV request failed ({detail})",
+    "commandDescription": "Refresh the JEV suggestion and show it below the editor",
+    "shortcutDescription": "Insert the JEV suggestion"
+  },
+  "tags": {
+    "continue": {
+      "label": "continue",
+      "replies": [
         "continue",
         "keep going",
         "go with your suggestion",
@@ -21,12 +22,12 @@ export const en: Locale = {
         "finish it",
         "proceed, tell me if you get blocked",
         "continue with the plan, report when done",
-        "keep going, stop only where I need to decide",
-      ],
+        "keep going, stop only where I need to decide"
+      ]
     },
-    plan: {
-      label: "plan first",
-      replies: [
+    "plan": {
+      "label": "plan first",
+      "replies": [
         "analyze first, don't touch the code yet",
         "give me the plan and risks, I'll confirm",
         "lay out the current state and unknowns",
@@ -34,12 +35,12 @@ export const en: Locale = {
         "break it into steps and confirm each",
         "find the root cause before deciding the fix",
         "assess the blast radius, then propose the change",
-        "state the trade-offs, then pick one",
-      ],
+        "state the trade-offs, then pick one"
+      ]
     },
-    correct: {
-      label: "challenge",
-      replies: [
+    "correct": {
+      "label": "challenge",
+      "replies": [
         "no, check your premise first",
         "are you sure? verify it again",
         "this is not what I asked for; explain why",
@@ -47,12 +48,12 @@ export const en: Locale = {
         "you missed a hard constraint",
         "give me the evidence before concluding",
         "the evidence is thin, look again",
-        "stop, let's re-align on the requirement",
-      ],
+        "stop, let's re-align on the requirement"
+      ]
     },
-    simplify: {
-      label: "simplify",
-      replies: [
+    "simplify": {
+      "label": "simplify",
+      "replies": [
         "simplify it, don't over-engineer",
         "smallest change that works",
         "drop unnecessary abstractions",
@@ -60,12 +61,12 @@ export const en: Locale = {
         "this is too complex, write it plainly",
         "ship the minimal usable version first",
         "no defensive code for hypothetical cases",
-        "delete the intermediate artifacts, keep the final state",
-      ],
+        "delete the intermediate artifacts, keep the final state"
+      ]
     },
-    status: {
-      label: "status",
-      replies: [
+    "status": {
+      "label": "status",
+      "replies": [
         "where are you? one line",
         "still running?",
         "what's the state and what's blocking",
@@ -73,12 +74,12 @@ export const en: Locale = {
         "if you're stuck, say so",
         "list what's done and what's not",
         "show me the intermediate result",
-        "what's happening now?",
-      ],
+        "what's happening now?"
+      ]
     },
-    verify: {
-      label: "verify",
-      replies: [
+    "verify": {
+      "label": "verify",
+      "replies": [
         "run the smallest verification",
         "confirm the original failure is reproduced and fixed",
         "paste the test results",
@@ -86,12 +87,12 @@ export const en: Locale = {
         "verify before committing",
         "look at real output, not just type checks",
         "confirm there is no regression",
-        "review your own diff",
-      ],
+        "review your own diff"
+      ]
     },
-    style: {
-      label: "wording",
-      replies: [
+    "style": {
+      "label": "wording",
+      "replies": [
         "answer in English",
         "plain language, no fluff",
         "shorter, lead with the conclusion",
@@ -99,12 +100,12 @@ export const en: Locale = {
         "skip the boilerplate, say what matters",
         "give it as a list",
         "don't repeat what I said",
-        "be concrete, include an example",
-      ],
+        "be concrete, include an example"
+      ]
     },
-    feedback: {
-      label: "ack",
-      replies: [
+    "feedback": {
+      "label": "ack",
+      "replies": [
         "ok, that works",
         "got it",
         "thanks",
@@ -112,8 +113,8 @@ export const en: Locale = {
         "nice, keep this direction",
         "looks right, go with it",
         "that's the way, remember it",
-        "fine for now, let me look",
-      ],
-    },
-  },
-};
+        "fine for now, let me look"
+      ]
+    }
+  }
+}
