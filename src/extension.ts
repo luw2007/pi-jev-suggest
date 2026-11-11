@@ -1,29 +1,28 @@
 /**
- * Pi extension: after a run settles, ask JEV which of eight intents the user is about to type,
- * then show one randomly chosen fixed reply from that intent's pool as a suggestion.
- * The suggestion only fills the editor; it is never sent automatically.
+ * Pi extension: after a run settles, ask JEV which tag the user is about to type, then show one
+ * randomly chosen reply from that tag's pool. The suggestion only fills the editor; it is never sent.
  */
 import { randomInt } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { loadConfig, type SuggestConfig } from "./config.ts";
 import { choose, describeFailure } from "./jev.ts";
-import { MODES, QUESTION, type Mode } from "./modes.ts";
+import { resolveLocale } from "./locales/index.ts";
+import { resolveTags, type Tag } from "./tags.ts";
 
 const WIDGET_KEY = "jev-suggest";
 const COMMAND = "jev-suggest";
+const QUESTION_ID = "next_request";
+const QUESTION_TEXT = "Which single request is the user most likely to type next, given this coding session?";
 /** Trailing characters of each side of the exchange sent to JEV. */
 const STATE_CHARS = 1_200;
 
-interface Suggestion {
-  mode: Mode;
-  text: string;
-}
-
 let config: SuggestConfig | undefined;
+let tags: readonly Tag[] = [];
+let criteria: Record<string, string> = {};
 let lastUser = "";
 let lastAssistant = "";
 let runReplied = false;
-let suggestion: Suggestion | undefined;
+let suggestion: { tag: Tag; text: string } | undefined;
 let generation = 0;
 let inFlight: AbortController | undefined;
 
@@ -41,55 +40,60 @@ function textOf(message: unknown): string {
     .join("\n");
 }
 
-function clear(ctx: ExtensionContext): void {
-  suggestion = undefined;
-  if (ctx.hasUI) ctx.ui.setWidget(WIDGET_KEY, undefined);
-}
-
-async function request(ctx: ExtensionContext, verbose: boolean): Promise<void> {
-  const active = config;
-  if (!active || ctx.mode !== "tui" || !ctx.hasUI) return;
-  // A suggestion must never overwrite what the user is already typing.
-  if (ctx.ui.getEditorText().trim() !== "") return;
-
-  const key = process.env[active.jev.keyEnv];
-  if (key === undefined) {
-    if (verbose) ctx.ui.notify(`${COMMAND}: 环境变量 ${active.jev.keyEnv} 未设置`, "warning");
-    return;
-  }
-
-  generation += 1;
-  const current = generation;
-  inFlight?.abort();
-  const controller = new AbortController();
-  inFlight = controller;
-  clear(ctx);
-
-  const result = await choose(
-    active.jev,
-    key,
-    { lastUserMessage: lastUser.slice(-STATE_CHARS), lastAssistantReply: lastAssistant.slice(-STATE_CHARS) },
-    QUESTION,
-    controller.signal,
-  );
-  if (current !== generation || controller.signal.aborted) return;
-  if (!result.ok) {
-    if (verbose) ctx.ui.notify(`${COMMAND}: JEV 请求失败（${describeFailure(result.failure)}）`, "error");
-    return;
-  }
-
-  const mode = MODES.find((candidate) => candidate.id === result.choice);
-  if (!mode) return;
-  const text = mode.replies[randomInt(mode.replies.length)]!;
-  suggestion = { mode, text };
-  ctx.ui.setWidget(WIDGET_KEY, [`[jev] 建议（${mode.label}）：${text}    ${active.shortcut} 插入`], {
-    placement: "belowEditor",
-  });
-}
-
 export default function jevSuggest(pi: ExtensionAPI): void {
   const loaded = loadConfig();
   config = loaded.ok ? loaded.config : undefined;
+  const locale = resolveLocale(config?.locale);
+  if (config) {
+    tags = resolveTags(locale, config.tags, config.options);
+    criteria = Object.fromEntries(tags.map((tag) => [tag.id, tag.criteria]));
+  }
+
+  const clear = (ctx: ExtensionContext): void => {
+    suggestion = undefined;
+    if (ctx.hasUI) ctx.ui.setWidget(WIDGET_KEY, undefined);
+  };
+
+  const request = async (ctx: ExtensionContext, verbose: boolean): Promise<void> => {
+    const active = config;
+    if (!active || ctx.mode !== "tui" || !ctx.hasUI) return;
+    // A suggestion must never overwrite what the user is already typing.
+    if (ctx.ui.getEditorText().trim() !== "") return;
+
+    const key = process.env[active.jev.keyEnv];
+    if (key === undefined) {
+      if (verbose) ctx.ui.notify(locale.missingKey(active.jev.keyEnv), "warning");
+      return;
+    }
+
+    generation += 1;
+    const current = generation;
+    inFlight?.abort();
+    const controller = new AbortController();
+    inFlight = controller;
+    clear(ctx);
+
+    const result = await choose(
+      active.jev,
+      key,
+      { lastUserMessage: lastUser.slice(-STATE_CHARS), lastAssistantReply: lastAssistant.slice(-STATE_CHARS) },
+      { id: QUESTION_ID, instructions: QUESTION_TEXT, criteria },
+      controller.signal,
+    );
+    if (current !== generation || controller.signal.aborted) return;
+    if (!result.ok) {
+      if (verbose) ctx.ui.notify(locale.requestFailed(describeFailure(result.failure)), "error");
+      return;
+    }
+
+    const tag = tags.find((candidate) => candidate.id === result.choice);
+    if (!tag) return;
+    const text = tag.replies[randomInt(tag.replies.length)]!;
+    suggestion = { tag, text };
+    ctx.ui.setWidget(WIDGET_KEY, [locale.widget(tag.label, text, locale.hint(active.shortcut))], {
+      placement: "belowEditor",
+    });
+  };
 
   pi.on("session_start", (_event, ctx) => {
     lastUser = "";
@@ -97,11 +101,11 @@ export default function jevSuggest(pi: ExtensionAPI): void {
     runReplied = false;
     clear(ctx);
     if (!loaded.ok) {
-      ctx.ui.notify(`${COMMAND} 配置错误，功能停用：${loaded.error}`, "error");
+      ctx.ui.notify(locale.configInvalid(loaded.error), "error");
       return;
     }
     if (process.env[loaded.config.jev.keyEnv] === undefined) {
-      ctx.ui.setStatus(WIDGET_KEY, `JEV 建议不可用：缺少 ${loaded.config.jev.keyEnv}`);
+      ctx.ui.setStatus(WIDGET_KEY, locale.missingKey(loaded.config.jev.keyEnv));
     }
   });
 
@@ -134,11 +138,11 @@ export default function jevSuggest(pi: ExtensionAPI): void {
 
   if (config) {
     pi.registerShortcut(config.shortcut as Parameters<ExtensionAPI["registerShortcut"]>[0], {
-      description: "插入 JEV 建议",
+      description: locale.shortcutDescription,
       handler: (ctx: ExtensionContext) => {
         if (!suggestion) return;
         if (ctx.ui.getEditorText().trim() !== "") {
-          ctx.ui.notify("输入框已有内容，未插入建议", "warning");
+          ctx.ui.notify(locale.editorNotEmpty, "warning");
           return;
         }
         ctx.ui.setEditorText(suggestion.text);
@@ -148,10 +152,10 @@ export default function jevSuggest(pi: ExtensionAPI): void {
   }
 
   pi.registerCommand(COMMAND, {
-    description: "刷新 JEV 下一条消息建议并上屏",
+    description: locale.commandDescription,
     handler: async (_args, ctx) => {
       if (!config) {
-        ctx.ui.notify(`${COMMAND}: 配置错误，功能停用`, "error");
+        ctx.ui.notify(locale.configInvalid(loaded.ok ? "" : loaded.error), "error");
         return;
       }
       await request(ctx, true);

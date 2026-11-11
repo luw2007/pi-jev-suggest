@@ -1,29 +1,28 @@
 # pi-jev-suggest
 
-[Pi](https://pi.dev) 扩展：一轮对话结束后，让 **JEV** 判断你接下来最可能要输入哪类请求，再从该类别的固定回复池里随机取一条，作为一行建议显示在输入框下方。按快捷键填入输入框，**不会自动发送**。
+[简体中文](README.zh-CN.md)
 
-JEV 在这里只做一次闭集分类（8 选 1），不生成文本，因此单次请求通常在 100–300ms、token 消耗固定。回复文本来自扩展内置的 8 类 × 8 条固定语句。
+A [Pi](https://pi.dev) extension. When a run ends, **JEV** decides which kind of request you are about to type, and one reply from that tag's pool is offered under the editor. Press your shortcut to put it in the editor. Nothing is ever sent for you.
 
-## 安装
+JEV only makes one closed-set decision (one of N tags). It never writes the reply text, so a request is usually 100–300 ms with a fixed token cost. The reply text comes from the tag's pool: eight built-in tags times eight replies, plus anything you add.
+
+## Install
 
 ```bash
 pi install git:github.com/luw2007/pi-jev-suggest
-```
-
-也可以只试用一次：
-
-```bash
+# try it once
 pi -e git:github.com/luw2007/pi-jev-suggest
 ```
 
-安装后重启 Pi。扩展只在 `tui` 模式工作；`-p`、`--mode json` 等非交互模式不产生任何请求。
+Restart Pi. The extension only runs in `tui` mode; `-p`, `--mode json` and other non-interactive modes make no requests.
 
-## 配置
+## Configure
 
-配置文件：`<agent-dir>/jev-suggest.json`，默认位置 `~/.pi/agent/jev-suggest.json`；设了 `PI_CODING_AGENT_DIR` 则取该目录。改完执行 `/reload`。
+Config file: `<agent-dir>/jev-suggest.json`, by default `~/.pi/agent/jev-suggest.json` (or the directory set by `PI_CODING_AGENT_DIR`). Run `/reload` after editing.
 
 ```json
 {
+  "locale": "en",
   "shortcut": "alt+j",
   "jev": {
     "url": "https://api.typesafe.ai/v1/systemone",
@@ -35,39 +34,75 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 }
 ```
 
-文件不存在时使用上面这组默认值。字段写错、出现未知字段、JSON 语法错误都会让扩展在会话启动时明确报错并停用，而不是静默降级。
+Missing file means these defaults. A malformed file, an unknown field, or an invalid key name stops the extension with an explicit error at session start instead of degrading silently.
 
-| 字段 | 默认 | 说明 |
+| Field | Default | Meaning |
 | --- | --- | --- |
-| `shortcut` | `ctrl+space` | 把建议填入输入框的按键，语法见 Pi 的 `docs/keybindings.md`（`modifier+key`） |
-| `jev.url` | TypeSafe 公网 | JEV choice 端点 |
-| `jev.model` | `jev-1.13.0` | 请求体里的 `model` |
-| `jev.keyEnv` | `TYPESAFE_API_KEY` | 存放 bearer token 的**环境变量名**；token 不写进配置文件 |
-| `jev.identity` | `exact` | 响应 `model` 校验：`exact` / `prefix` / `none`（自建服务常用 `none`） |
-| `jev.timeoutMs` | `8000` | 单次请求总超时，500–60000 |
+| `locale` | system locale, else `en` | UI and reply language: `en`, `zh-CN` |
+| `shortcut` | `ctrl+space` | Key that inserts the suggestion; syntax from Pi's `docs/keybindings.md` |
+| `jev.url` | TypeSafe public | JEV choice endpoint |
+| `jev.model` | `jev-1.13.0` | `model` in the request body |
+| `jev.keyEnv` | `TYPESAFE_API_KEY` | **Name of** the environment variable holding the bearer token; the token never goes in this file |
+| `jev.identity` | `exact` | How the response `model` is checked: `exact`, `prefix`, `none` (self-hosted services often need `none`) |
+| `jev.timeoutMs` | `8000` | Total deadline per request, 500–60000 |
+| `tags` | `[]` | Your own tags, appended to the built-ins |
+| `options` | `{}` | Replace a tag's reply pool by tag id |
 
-自建或内网 JEV 只需改 `url`、`model`，并把 `keyEnv` 指向你自己的环境变量；若服务回显的模型名与请求不一致，把 `identity` 设为 `none`。
+Self-hosting JEV usually means setting `jev.url`, `jev.model` and `jev.keyEnv`, and `identity: "none"`.
 
-挑快捷键前先跑 `/hotkeys`，确认没有和已有动作冲突。
+Check `/hotkeys` before picking a shortcut so it does not collide.
 
-## 行为
+### Add your own tags
 
-1. 一轮运行结束（`agent_settled`，且本轮确实产生了助手回复）后，如果输入框为空，就把最近一条用户消息与最近一条助手回复（各截 1200 字符）发给 JEV。
-2. JEV 返回 8 类中的一类：继续执行 / 先分析再动手 / 纠偏质疑 / 简化收敛 / 进度状态 / 验证交付 / 表达方式 / 确认反馈。
-3. 从该类的 8 条固定回复里随机取一条，显示为：
+A tag is a classification option: `id` is what JEV answers, `label` is what the widget shows, `criteria` is the model-facing description, `replies` is the pool to pick from. Custom tags are appended to the eight built-ins and sent in the same request.
 
-```text
-[jev] 建议（验证交付）：验证完再提交    alt+j 插入
+```json
+{
+  "locale": "en",
+  "tags": [
+    {
+      "id": "ship",
+      "label": "ship it",
+      "criteria": "Ship or deploy the change, e.g. release, publish, roll out.",
+      "replies": ["ship it", "cut the release", "deploy to staging", "publish the package"]
+    }
+  ]
+}
 ```
 
-4. 按快捷键把建议写入输入框；输入框已有内容时只提示、不覆盖。
-5. 手动刷新：`/jev-suggest`，失败时显示具体原因（HTTP 状态、超时、响应不符合契约等）。
+Rules: `id` must match `^[a-z][a-z0-9_-]{0,31}$`, must not reuse a built-in id (`continue`, `plan`, `correct`, `simplify`, `status`, `verify`, `style`, `feedback`), and must be unique. Write tags in your own language — `label` and `replies` are never translated for you.
 
-输入、新一轮运行、会话切换都会清除旧建议；请求带超时与取消，过期结果直接丢弃。
+### Replace the replies of any tag
 
-## 对 JEV 端点的要求
+`options` replaces the pool for a tag id, built-in or custom. Keep every entry short: these are messages you would actually type.
 
-一次普通的 choice 请求：
+```json
+{
+  "options": {
+    "verify": ["run the tests", "paste the output", "check the callers"],
+    "ship": ["deploy to staging"]
+  }
+}
+```
+
+An `options` key that is not a known tag is a config error, so a typo cannot silently do nothing.
+
+## Behaviour
+
+1. After a run settles, with a completed assistant reply and an empty editor, the last user message and the last assistant reply (1200 characters each) are sent to JEV.
+2. JEV returns one tag.
+3. One reply is picked at random from that tag's pool and shown:
+
+```text
+[jev] suggestion (verify): run the smallest verification    alt+j to insert
+```
+
+4. The shortcut writes it into the editor. If the editor already has text, you get a notice instead of an overwrite.
+5. `/jev-suggest` refreshes manually and reports failures (HTTP status, timeout, off-contract response).
+
+Typing, a new run, and a new session all clear the suggestion. Requests carry a deadline and are cancelled, so late results are dropped.
+
+## What the endpoint must accept
 
 ```json
 {
@@ -77,13 +112,13 @@ pi -e git:github.com/luw2007/pi-jev-suggest
     "next_request": {
       "type": "choice",
       "instructions": "Which single request is the user most likely to type next, given this coding session?",
-      "criteria": { "continue": "…", "plan": "…", "correct": "…", "simplify": "…", "status": "…", "verify": "…", "style": "…", "feedback": "…" }
+      "criteria": { "continue": "…", "plan": "…", "verify": "…" }
     }
   }
 }
 ```
 
-期望响应：
+Expected answer:
 
 ```json
 {
@@ -92,13 +127,17 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 }
 ```
 
-`choice` 必须落在 `criteria` 的键里；`model` 按 `jev.identity` 校验；其余字段被忽略。
+`choice` must be a key of `criteria`; `model` is checked per `jev.identity`; other fields are ignored.
 
-## 限制
+## Add a language
 
-- 只在 TUI 模式可用。
-- JEV 不可用时静默跳过，不影响正常对话。
-- 建议质量取决于分类准确度；本扩展不做多候选生成，也不学习你的接受/拒绝行为。
+Built-in tags keep English `criteria` so the JEV request is stable; only labels, replies and UI text are translated. To add a locale, copy `src/locales/en.ts`, translate the strings and the eight reply pools, then register it in `src/locales/index.ts`. Pull requests welcome.
+
+## Limits
+
+- TUI only.
+- JEV being unavailable skips the suggestion; the conversation is unaffected.
+- Quality depends on the classification. There is no multi-candidate generation and no learning from what you accept.
 
 ## License
 
