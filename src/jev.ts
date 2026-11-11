@@ -73,7 +73,16 @@ export async function choose(
     });
     if (!response.ok) return { ok: false, failure: { kind: "http", status: response.status } };
 
-    const body = record(await response.json());
+    let json: unknown;
+    try {
+      json = await response.json();
+    } catch (error) {
+      if (error instanceof SyntaxError && !timedOut && !signal.aborted) {
+        return { ok: false, failure: { kind: "malformed", reason: `response is not valid JSON: ${error.message}` } };
+      }
+      throw error;
+    }
+    const body = record(json);
     if (!body) return { ok: false, failure: { kind: "malformed", reason: "response is not an object" } };
     if (!modelAccepted(body.model, endpoint)) {
       return { ok: false, failure: { kind: "malformed", reason: `model is not ${endpoint.model}` } };
@@ -87,10 +96,9 @@ export async function choose(
       return { ok: false, failure: { kind: "malformed", reason: "choice outside the option set" } };
     }
     return { ok: true, choice };
-  } catch (error) {
+  } catch {
     if (timedOut) return { ok: false, failure: { kind: "timeout" } };
     if (signal.aborted) return { ok: false, failure: { kind: "aborted" } };
-    void error;
     return { ok: false, failure: { kind: "network" } };
   } finally {
     clearTimeout(timer);

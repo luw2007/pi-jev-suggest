@@ -2,9 +2,9 @@
 
 [简体中文](README.zh-CN.md)
 
-A [Pi](https://pi.dev) extension. When a run ends, **JEV** decides which kind of request you are about to type, and one reply from that tag's pool is offered under the editor. Press your shortcut to put it in the editor. Nothing is ever sent for you.
+A [Pi](https://pi.dev) suggestion extension, version **0.3.1**. When a run ends, **JEV** decides which kind of request you are about to type, and one reply from that tag's pool is offered under the editor. Press your shortcut to put it in the editor. Nothing is ever sent for you.
 
-JEV only makes one closed-set decision (one of N tags). It never writes the reply text, so a request is usually 100–300 ms with a fixed token cost. The reply text comes from the tag's pool: eight built-in tags times eight replies, plus anything you add.
+JEV only makes one closed-set decision (one of N tags). It never writes the reply text. Latency and token usage depend on the endpoint, state text and configured tags; neither is fixed. The reply text comes from the tag's pool: eight built-in tags times eight replies, plus anything you add.
 
 ## Install
 
@@ -14,7 +14,7 @@ pi install git:github.com/luw2007/pi-jev-suggest
 pi -e git:github.com/luw2007/pi-jev-suggest
 ```
 
-Restart Pi. The extension only runs in `tui` mode; `-p`, `--mode json` and other non-interactive modes make no requests.
+Restart Pi. Suggestions require `tui` mode and an available UI. Automatic requests are skipped in all non-TUI modes, including `-p`, `--mode json` and RPC. Manually invoking `/jev-suggest` in those modes reports a TUI-only command error (on stderr in print/JSON mode), without making a request.
 
 ## Configure
 
@@ -36,12 +36,12 @@ The example below overrides the shortcut to `alt+j`; the default is `ctrl+space`
 }
 ```
 
-Missing file means these defaults. A malformed file, an unknown field, or an invalid key name stops the extension with an explicit error at session start instead of degrading silently.
+Missing file means the defaults below, with automatic locale detection. A malformed file, an unknown field, or an invalid key name stops the extension with an explicit error at session start instead of degrading silently.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `locale` | system locale, else `en` | UI and reply language; must be a file in `data/locales/` (`en`, `zh-CN`) |
-| `localeFile` | – | Path to your own locale JSON; replaces `locale`, and the two cannot both be set |
+| `localeFile` | – | Path to your own locale JSON; replaces `locale`, and the two cannot both be set. Relative paths resolve against the process working directory, not the config directory; `~/` expands to your home directory |
 | `shortcut` | `ctrl+space` | Key that inserts the suggestion; syntax from Pi's `docs/keybindings.md` |
 | `jev.url` | TypeSafe public | JEV choice endpoint |
 | `jev.model` | `jev-1.13.0` | `model` in the request body |
@@ -92,18 +92,26 @@ An `options` key that is not a known tag is a config error, so a typo cannot sil
 
 ## Behaviour
 
-1. After a run settles, with a completed assistant reply and an empty editor, the last user message and the last assistant reply (1200 characters each) are sent to JEV.
+Editor emptiness checks ignore whitespace-only text.
+
+1. After a non-aborted run settles, with a completed assistant reply and an empty editor, the last raw user input and the last assistant reply are sent to JEV. Text of up to 1200 Unicode code points each is kept unchanged; longer text keeps the first 600 and last 600 code points, separated by `\n…\n`.
 2. JEV returns one tag.
-3. One reply is picked at random from that tag's pool and shown:
+3. Before showing a result, the extension rechecks that the editor is empty. It picks a random reply from the selected tag's pool, excluding every entry equal to the last offered text if there is an alternative. An identical-only pool may repeat; the remembered text resets at session start. The reply is shown:
 
 ```text
 [jev] suggestion (verify): run the smallest verification    ctrl+space to insert
 ```
 
 4. The shortcut writes it into the editor; the hint always shows the shortcut you configured. If the editor already has text, you get a notice instead of an overwrite.
-5. `/jev-suggest` refreshes manually and reports failures (HTTP status, timeout, off-contract response).
+5. `/jev-suggest` refreshes manually in TUI mode when the editor is empty and reports failures (missing API key, HTTP status, timeout, network failure, invalid JSON or an off-contract response). It does nothing while the editor has text.
 
-Typing, a new run, and a new session all clear the suggestion. Requests carry a deadline and are cancelled, so late results are dropped.
+A new input event, run start, session start or shutdown clears the suggestion and cancels any pending request. A new request also cancels the previous one. Requests carry a deadline, and stale results are dropped. Typing into the editor while JEV is pending prevents the result from being shown if the editor is still nonempty when it arrives; insertion also rechecks editor emptiness.
+
+### What is sent, and confidentiality limits
+
+State carries exactly two fields: `lastUserMessage` (raw text from the latest `input` event, before skill or prompt-template expansion) and `lastAssistantReply` (the text parts of the latest assistant message).
+
+The extension does not directly read tool calls or their arguments, tool results, files, thinking/reasoning blocks, expanded skills or prompt templates, the system prompt, or earlier turns for this state. However, raw input may contain sensitive text, and assistant text may repeat file contents, tool results, secrets or earlier context. That text can be sent to the configured JEV endpoint; this is not a guarantee that secrets stay on the machine.
 
 ## What the endpoint must accept
 

@@ -2,8 +2,8 @@
  * Pi extension: after a run settles, ask JEV which tag the user is about to type, then show one
  * randomly chosen reply from that tag's pool. The suggestion only fills the editor; it is never sent.
  *
- * No tag or UI text lives here: `data/tags.json`, `data/locales/*.json` or the user's own locale file
- * supply every label, reply and message.
+ * `data/tags.json`, `data/locales/*.json` or the user's own locale file supply the tags,
+ * labels, replies and localized UI messages.
  */
 import { randomInt } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -25,8 +25,13 @@ import { resolveTags, type Tag } from "./tags.ts";
 const WIDGET_KEY = "jev-suggest";
 const COMMAND = "jev-suggest";
 const QUESTION_ID = "next_request";
-const QUESTION_TEXT = "Which single request is the user most likely to type next, given this coding session?";
-/** Trailing characters of each side of the exchange sent to JEV. */
+const QUESTION_TEXT =
+  "Which single request is the user most likely to type next, given this coding session? " +
+  "If the assistant's reply states remaining work or an obvious next step, choose continue. " +
+  "If it reports a change with no verification, choose verify. " +
+  "Choose status only when progress is genuinely unclear. " +
+  "If the user has just pushed back on the result, choose correct.";
+/** Unicode code points kept from each side of the exchange sent to JEV. */
 const STATE_CHARS = 1_200;
 
 type Setup =
@@ -63,6 +68,17 @@ function setUp(): Setup {
   };
 }
 
+/**
+ * Keeps both ends of a long text: a request usually opens a message, and the operative
+ * instruction or question closes it, so tail-only clipping loses the ask.
+ */
+function clip(text: string): string {
+  const points = Array.from(text);
+  if (points.length <= STATE_CHARS) return text;
+  const half = Math.floor(STATE_CHARS / 2);
+  return `${points.slice(0, half).join("")}\n…\n${points.slice(-half).join("")}`;
+}
+
 function textOf(message: unknown): string {
   if (message === null || typeof message !== "object") return "";
   const { content } = message as { content?: unknown };
@@ -88,6 +104,7 @@ export default function jevSuggest(pi: ExtensionAPI): void {
   let lastAssistant = "";
   let runReplied = false;
   let suggestion: { text: string } | undefined;
+  let lastOfferedText: string | undefined;
   let generation = 0;
   let inFlight: AbortController | undefined;
 
@@ -98,6 +115,13 @@ export default function jevSuggest(pi: ExtensionAPI): void {
   const clear = (ctx: ExtensionContext): void => {
     suggestion = undefined;
     if (ctx.hasUI) ctx.ui.setWidget(WIDGET_KEY, undefined);
+  };
+
+  const invalidate = (ctx: ExtensionContext): void => {
+    generation += 1;
+    inFlight?.abort();
+    inFlight = undefined;
+    clear(ctx);
   };
 
   const request = async (ctx: ExtensionContext, verbose: boolean): Promise<void> => {
@@ -122,19 +146,23 @@ export default function jevSuggest(pi: ExtensionAPI): void {
     const result = await choose(
       config.jev,
       key,
-      { lastUserMessage: lastUser.slice(-STATE_CHARS), lastAssistantReply: lastAssistant.slice(-STATE_CHARS) },
+      { lastUserMessage: clip(lastUser), lastAssistantReply: clip(lastAssistant) },
       { id: QUESTION_ID, instructions: QUESTION_TEXT, criteria },
       controller.signal,
     );
-    if (current !== generation || controller.signal.aborted) return;
+    if (current !== generation || inFlight !== controller || controller.signal.aborted) return;
+    inFlight = undefined;
     if (!result.ok) {
       if (verbose) ctx.ui.notify(say("requestFailed", { detail: describeFailure(result.failure) }), "error");
       return;
     }
 
     const tag = tags.find((candidate) => candidate.id === result.choice);
-    if (!tag) return;
-    const text = tag.replies[randomInt(tag.replies.length)]!;
+    if (!tag || ctx.ui.getEditorText().trim() !== "") return;
+    const alternatives = tag.replies.filter((reply) => reply !== lastOfferedText);
+    const eligible = alternatives.length > 0 ? alternatives : tag.replies;
+    const text = eligible[randomInt(eligible.length)]!;
+    lastOfferedText = text;
     suggestion = { text };
     const line = say("widget", { label: tag.label, text, hint: say("hint", { shortcut: config.shortcut }) });
     ctx.ui.setWidget(WIDGET_KEY, [line], { placement: "belowEditor" });
@@ -144,9 +172,10 @@ export default function jevSuggest(pi: ExtensionAPI): void {
     lastUser = "";
     lastAssistant = "";
     runReplied = false;
-    clear(ctx);
+    lastOfferedText = undefined;
+    invalidate(ctx);
     if (!setup.ok) {
-      ctx.ui.notify(say("configInvalid", { error: setup.error }), "error");
+      ctx.ui.notify(ui ? say("configInvalid", { error: setup.error }) : setup.error, "error");
       return;
     }
     if (process.env[setup.config.jev.keyEnv] === undefined) {
@@ -156,11 +185,12 @@ export default function jevSuggest(pi: ExtensionAPI): void {
 
   pi.on("input", (event, ctx) => {
     lastUser = event.text;
-    clear(ctx);
+    invalidate(ctx);
   });
 
-  pi.on("agent_start", () => {
+  pi.on("agent_start", (_event, ctx) => {
     runReplied = false;
+    invalidate(ctx);
   });
 
   pi.on("message_end", (event) => {
@@ -175,17 +205,15 @@ export default function jevSuggest(pi: ExtensionAPI): void {
     await request(ctx, false);
   });
 
-  pi.on("session_shutdown", () => {
-    generation += 1;
-    inFlight?.abort();
-    suggestion = undefined;
+  pi.on("session_shutdown", (_event, ctx) => {
+    invalidate(ctx);
   });
 
   if (config) {
     pi.registerShortcut(config.shortcut as Parameters<ExtensionAPI["registerShortcut"]>[0], {
       description: say("shortcutDescription"),
       handler: (ctx: ExtensionContext) => {
-        if (!suggestion) return;
+        if (ctx.mode !== "tui" || !ctx.hasUI || !suggestion) return;
         if (ctx.ui.getEditorText().trim() !== "") {
           ctx.ui.notify(say("editorNotEmpty"), "warning");
           return;
@@ -197,10 +225,12 @@ export default function jevSuggest(pi: ExtensionAPI): void {
   }
 
   pi.registerCommand(COMMAND, {
-    description: say("commandDescription"),
+    description: ui ? say("commandDescription") : "Refresh the JEV suggestion (TUI only)",
     handler: async (_args, ctx) => {
+      // Pi reports command errors through its mode boundary, including stderr in print/JSON.
+      if (ctx.mode !== "tui" || !ctx.hasUI) throw new Error(`/${COMMAND} is TUI-only`);
       if (!setup.ok) {
-        ctx.ui.notify(say("configInvalid", { error: setup.error }), "error");
+        ctx.ui.notify(ui ? say("configInvalid", { error: setup.error }) : setup.error, "error");
         return;
       }
       await request(ctx, true);

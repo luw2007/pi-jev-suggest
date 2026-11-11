@@ -98,12 +98,18 @@ export function loadTagSpecs(path = join(DATA_DIR, "tags.json")): Loaded<readonl
   return { ok: true, value: specs };
 }
 
-export function availableLocales(): string[] {
-  return readdirSync(LOCALE_DIR)
-    .filter((file) => file.endsWith(".json"))
-    .map((file) => file.slice(0, -".json".length))
-    .filter((name) => LOCALE_NAME.test(name))
-    .sort();
+export function availableLocales(): Loaded<string[]> {
+  try {
+    const locales = readdirSync(LOCALE_DIR)
+      .filter((file) => file.endsWith(".json"))
+      .map((file) => file.slice(0, -".json".length))
+      .filter((name) => LOCALE_NAME.test(name))
+      .sort();
+    return { ok: true, value: locales };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return { ok: false, error: code === "ENOENT" ? `${LOCALE_DIR} 不存在` : `${LOCALE_DIR} 读取失败：${(error as Error).message}` };
+  }
 }
 
 /** A locale file must cover every UI key and every built-in tag. */
@@ -162,7 +168,9 @@ export function detectLocale(): string | undefined {
 
 /** A requested locale must exist; the detected one may fall through to its language, then `en`. */
 export function pickLocale(requested: string | undefined): Loaded<string> {
-  const available = availableLocales();
+  const locales = availableLocales();
+  if (!locales.ok) return locales;
+  const available = locales.value;
   if (requested !== undefined) {
     return available.includes(requested)
       ? { ok: true, value: requested }
