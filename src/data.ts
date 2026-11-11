@@ -6,13 +6,12 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isRecord, LOCALE_NAME, TAG_ID } from "./validation.ts";
 
 export const DATA_SCHEMA = 1;
 
 const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "data");
 const LOCALE_DIR = join(DATA_DIR, "locales");
-const TAG_ID = /^[a-z][a-z0-9_-]{0,31}$/;
-const LOCALE_NAME = /^[A-Za-z0-9_-]{1,32}$/;
 
 export const UI_KEYS = [
   "widget",
@@ -43,10 +42,6 @@ export interface LocaleData {
 }
 
 export type Loaded<T> = { ok: true; value: T } | { ok: false; error: string };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function text(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;

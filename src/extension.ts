@@ -73,24 +73,12 @@ function setUp(): Setup {
  * instruction or question closes it, so tail-only clipping loses the ask.
  */
 function clip(text: string): string {
-  const points = Array.from(text);
-  if (points.length <= STATE_CHARS) return text;
+  // Each code point uses at most two UTF-16 units; only inspect bounded windows at either end.
+  const points = Array.from(text.slice(0, STATE_CHARS * 2));
+  if (text.length <= STATE_CHARS * 2 && points.length <= STATE_CHARS) return text;
   const half = Math.floor(STATE_CHARS / 2);
-  return `${points.slice(0, half).join("")}\n…\n${points.slice(-half).join("")}`;
-}
-
-function textOf(message: unknown): string {
-  if (message === null || typeof message !== "object") return "";
-  const { content } = message as { content?: unknown };
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((part) =>
-      part !== null && typeof part === "object" && (part as { type?: unknown }).type === "text"
-        ? String((part as { text?: unknown }).text ?? "")
-        : "",
-    )
-    .join("\n");
+  const tail = Array.from(text.slice(-half * 2));
+  return `${points.slice(0, half).join("")}\n…\n${tail.slice(-half).join("")}`;
 }
 
 export default function jevSuggest(pi: ExtensionAPI): void {
@@ -195,7 +183,7 @@ export default function jevSuggest(pi: ExtensionAPI): void {
 
   pi.on("message_end", (event) => {
     if (event.message.role !== "assistant") return;
-    lastAssistant = textOf(event.message);
+    lastAssistant = event.message.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
     runReplied = true;
   });
 

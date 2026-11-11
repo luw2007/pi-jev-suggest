@@ -9,12 +9,7 @@ export interface Tag {
 }
 
 /** A tag the user adds in config; it carries its own label and reply pool. */
-export interface CustomTag {
-  id: string;
-  label: string;
-  criteria: string;
-  replies: readonly string[];
-}
+export type CustomTag = Tag;
 
 /**
  * Built-in tags in data order, localized, with `options` replacing a pool; custom tags appended.

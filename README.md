@@ -161,7 +161,7 @@ UI strings are templates: `{label}`, `{text}`, `{hint}`, `{shortcut}`, `{env}`, 
 
 Copy `data/locales/en.json`, translate `ui` and each tag's `label`/`replies`, save it as `data/locales/<name>.json`, and it appears in `availableLocales()` without code changes. Pull requests welcome.
 
-To keep your language private, create `<agent-dir>/jev-suggest/locales/` and save your translated copy there, outside the installed package so package updates do not overwrite it. This is a suggested location for your own data, not an auto-discovered locale directory.
+To keep your language private, create `<agent-dir>/jev-suggest/locales/` and save your translated copy there, outside the installed package so package updates do not overwrite it. This directory is not auto-discovered: you must explicitly set `localeFile`.
 
 With the default agent directory, set this in `~/.pi/agent/jev-suggest.json` (remove `locale` if present), then run `/reload`:
 

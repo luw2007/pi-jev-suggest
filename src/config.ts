@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { JevEndpoint, JevIdentity } from "./jev.ts";
 import type { CustomTag } from "./tags.ts";
+import { isRecord, LOCALE_NAME, TAG_ID } from "./validation.ts";
 
 export interface SuggestConfig {
   /** Built-in locale name; absent means "detect from the environment". */
@@ -26,8 +27,6 @@ type Fail = (error: string) => { ok: false; error: string };
 type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 
 const IDENTITIES: readonly JevIdentity[] = ["exact", "prefix", "none"];
-const TAG_ID = /^[a-z][a-z0-9_-]{0,31}$/;
-const LOCALE_NAME = /^[A-Za-z0-9_-]{1,32}$/;
 const MODIFIERS = new Set(["ctrl", "shift", "alt", "super"]);
 const NAMED_KEYS = new Set([
   "escape",
@@ -79,10 +78,6 @@ export function isValidShortcut(value: string): boolean {
 export function configPath(): string {
   const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
   return join(agentDir, "jev-suggest.json");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function stringList(value: unknown): readonly string[] | undefined {

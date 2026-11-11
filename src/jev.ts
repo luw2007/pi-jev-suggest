@@ -3,6 +3,8 @@
  * Request body is `{ model, state, questions: { [id]: { type: "choice", instructions, criteria } } }`;
  * the answer is `answers[id].choice`.
  */
+import { isRecord } from "./validation.ts";
+
 export type JevIdentity = "exact" | "prefix" | "none";
 
 export interface JevEndpoint {
@@ -28,12 +30,6 @@ export type JevFailure =
   | { kind: "malformed"; reason: string };
 
 export type JevResult = { ok: true; choice: string } | { ok: false; failure: JevFailure };
-
-function record(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
 
 function modelAccepted(reported: unknown, endpoint: JevEndpoint): boolean {
   if (endpoint.identity === "none") return true;
@@ -82,14 +78,15 @@ export async function choose(
       }
       throw error;
     }
-    const body = record(json);
-    if (!body) return { ok: false, failure: { kind: "malformed", reason: "response is not an object" } };
+    const body = json;
+    if (!isRecord(body)) return { ok: false, failure: { kind: "malformed", reason: "response is not an object" } };
     if (!modelAccepted(body.model, endpoint)) {
       return { ok: false, failure: { kind: "malformed", reason: `model is not ${endpoint.model}` } };
     }
 
-    const answer = record(record(body.answers)?.[question.id]);
-    if (!answer) return { ok: false, failure: { kind: "malformed", reason: "answer missing" } };
+    const answers = isRecord(body.answers) ? body.answers : undefined;
+    const answer = answers?.[question.id];
+    if (!isRecord(answer)) return { ok: false, failure: { kind: "malformed", reason: "answer missing" } };
     if (answer.type !== "choice") return { ok: false, failure: { kind: "malformed", reason: "answer is not a choice" } };
     const choice = answer.choice;
     if (typeof choice !== "string" || !Object.hasOwn(question.criteria, choice)) {
@@ -111,7 +108,7 @@ export function describeFailure(failure: JevFailure): string {
     case "http":
       return `HTTP ${failure.status}`;
     case "malformed":
-      return `响应不符合契约：${failure.reason}`;
+      return `malformed response: ${failure.reason}`;
     default:
       return failure.kind;
   }

@@ -159,7 +159,7 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 
 复制 `data/locales/en.json`，翻译 `ui` 和每个 tag 的 `label`/候选，保存为 `data/locales/<name>.json`，无需改代码即可被识别。欢迎 PR。
 
-只想自己用某种语言，可创建 `<agent-dir>/jev-suggest/locales/`，将翻译后的副本保存在那里，与已安装包分开，避免包更新覆盖。这是建议的私有数据位置，不是自动发现语言文件的目录。
+只想自己用某种语言，可创建 `<agent-dir>/jev-suggest/locales/`，将翻译后的副本保存在那里，与已安装包分开，避免包更新覆盖。此目录不会被自动发现，必须显式设置 `localeFile`。
 
 使用默认 agent 目录时，在 `~/.pi/agent/jev-suggest.json` 中设置如下字段（若已有 `locale`，先移除），然后执行 `/reload`：
 
