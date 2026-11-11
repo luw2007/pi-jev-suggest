@@ -1,0 +1,26 @@
+{
+  "name": "pi-jev-suggest",
+  "version": "0.1.0",
+  "description": "Pi extension: JEV classifies the next coding-session intent, then offers one fixed reply as a one-key suggestion.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "jev",
+    "suggestion"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/extension.ts"
+    ]
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
