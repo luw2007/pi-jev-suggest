@@ -91,6 +91,9 @@ export default function jevSuggest(pi: ExtensionAPI): void {
   let lastUser = "";
   let lastAssistant = "";
   let runReplied = false;
+  let pendingInteractiveInput = false;
+  // Monotonic and intentionally not reset on session changes: a request may already be billed.
+  let lastAttemptAt: number | undefined;
   let suggestion: { text: string } | undefined;
   let lastOfferedText: string | undefined;
   let generation = 0;
@@ -112,7 +115,7 @@ export default function jevSuggest(pi: ExtensionAPI): void {
     clear(ctx);
   };
 
-  const request = async (ctx: ExtensionContext, verbose: boolean): Promise<void> => {
+  const request = async (ctx: ExtensionContext, automatic: boolean): Promise<void> => {
     if (!setup.ok || !config) return;
     if (ctx.mode !== "tui" || !ctx.hasUI) return;
     // A suggestion must never overwrite what the user is already typing.
@@ -120,10 +123,15 @@ export default function jevSuggest(pi: ExtensionAPI): void {
 
     const key = process.env[config.jev.keyEnv];
     if (key === undefined) {
-      if (verbose) ctx.ui.notify(say("missingKey", { env: config.jev.keyEnv }), "warning");
+      if (!automatic) ctx.ui.notify(say("missingKey", { env: config.jev.keyEnv }), "warning");
       return;
     }
 
+    // Any billed attempt (manual included) starts the cooldown; only automatic requests wait it out.
+    const remaining =
+      lastAttemptAt === undefined ? 0 : config.minIntervalMs - (performance.now() - lastAttemptAt);
+    if (automatic && (!config.auto || remaining > 0)) return;
+    lastAttemptAt = performance.now();
     generation += 1;
     const current = generation;
     inFlight?.abort();
@@ -141,7 +149,7 @@ export default function jevSuggest(pi: ExtensionAPI): void {
     if (current !== generation || inFlight !== controller || controller.signal.aborted) return;
     inFlight = undefined;
     if (!result.ok) {
-      if (verbose) ctx.ui.notify(say("requestFailed", { detail: describeFailure(result.failure) }), "error");
+      if (!automatic) ctx.ui.notify(say("requestFailed", { detail: describeFailure(result.failure) }), "error");
       return;
     }
 
@@ -160,6 +168,7 @@ export default function jevSuggest(pi: ExtensionAPI): void {
     lastUser = "";
     lastAssistant = "";
     runReplied = false;
+    pendingInteractiveInput = false;
     lastOfferedText = undefined;
     invalidate(ctx);
     if (!setup.ok) {
@@ -173,6 +182,7 @@ export default function jevSuggest(pi: ExtensionAPI): void {
 
   pi.on("input", (event, ctx) => {
     lastUser = event.text;
+    pendingInteractiveInput = event.source === "interactive" && event.text.trim() !== "";
     invalidate(ctx);
   });
 
@@ -184,13 +194,23 @@ export default function jevSuggest(pi: ExtensionAPI): void {
   pi.on("message_end", (event) => {
     if (event.message.role !== "assistant") return;
     lastAssistant = event.message.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
-    runReplied = true;
+    // Only a final, successful, non-empty answer qualifies; tool calls and errors do not.
+    runReplied = event.message.stopReason === "stop" && lastAssistant.trim() !== "";
   });
 
   pi.on("agent_settled", async (event, ctx) => {
-    if (event.aborted || !runReplied) return;
+    const shouldRequest = !event.aborted && runReplied && pendingInteractiveInput;
     runReplied = false;
-    await request(ctx, false);
+    pendingInteractiveInput = false;
+    if (shouldRequest) await request(ctx, true);
+  });
+
+  pi.on("session_tree", (_event, ctx) => {
+    lastUser = "";
+    lastAssistant = "";
+    runReplied = false;
+    pendingInteractiveInput = false;
+    invalidate(ctx);
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
@@ -221,7 +241,7 @@ export default function jevSuggest(pi: ExtensionAPI): void {
         ctx.ui.notify(ui ? say("configInvalid", { error: setup.error }) : setup.error, "error");
         return;
       }
-      await request(ctx, true);
+      await request(ctx, false);
     },
   });
 }

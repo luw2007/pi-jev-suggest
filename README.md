@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md)
 
-A [Pi](https://pi.dev) suggestion extension, version **0.3.1**. When a run ends, **JEV** decides which kind of request you are about to type, and one reply from that tag's pool is offered under the editor. Press your shortcut to put it in the editor. Nothing is ever sent for you.
+A [Pi](https://pi.dev) suggestion extension, version **0.4.0**. When a run ends, **JEV** decides which kind of request you are about to type, and one reply from that tag's pool is offered under the editor. Press your shortcut to put it in the editor. Nothing is ever sent for you.
 
 JEV only makes one closed-set decision (one of N tags). It never writes the reply text. Latency and token usage depend on the endpoint, state text and configured tags; neither is fixed. The reply text comes from small, intent-consistent pools for twelve built-in tags, plus anything you add.
 
@@ -63,6 +63,8 @@ Missing file means the defaults below, with automatic locale detection. A malfor
 | `locale` | system locale, else `en` | UI and reply language; must be a file in `data/locales/` (`en`, `zh-CN`) |
 | `localeFile` | – | Path to your own locale JSON; replaces `locale`, and the two cannot both be set. Relative paths resolve against the process working directory, not the config directory; `~/` expands to your home directory |
 | `shortcut` | `ctrl+space` | Key that inserts the suggestion; syntax from Pi's `docs/keybindings.md` |
+| `auto` | `true` | Whether suggestions are requested automatically after a run; `false` keeps `/jev-suggest` manual only |
+| `minIntervalMs` | `30000` | Minimum time since the last request (manual attempts and failures included) before the next automatic request; integer milliseconds (1000–86400000) or a duration string such as `"45s"`, `"10m"`, `"1h30m"`, `"1d"` — up to one day |
 | `jev.url` | TypeSafe public | JEV choice endpoint |
 | `jev.model` | `jev-1.13.0` | `model` in the request body |
 | `jev.keyEnv` | `TYPESAFE_API_KEY` | **Name of** the environment variable holding the bearer token; the token never goes in this file |
@@ -128,7 +130,7 @@ An `options` key that is not a known tag is a config error, so a typo cannot sil
 
 Editor emptiness checks ignore whitespace-only text.
 
-1. After a non-aborted run settles, with a completed assistant reply and an empty editor, the last raw user input and the last assistant reply are sent to JEV. Text of up to 1200 Unicode code points each is kept unchanged; longer text keeps the first 600 and last 600 code points, separated by `\n…\n`.
+1. Automatic requests are considered only after a run triggered by nonempty interactive user input settles without abortion, its final assistant message stops successfully with nonempty text, and the editor is empty. After the cooldown, the last raw user input and assistant reply are sent to JEV. Text of up to 1200 Unicode code points each is kept unchanged; longer text keeps the first 600 and last 600 code points, separated by `\n…\n`.
 2. JEV returns one tag.
 3. Before showing a result, the extension rechecks that the editor is empty. It picks a random reply from the selected tag's pool, excluding every entry equal to the last offered text if there is an alternative. An identical-only pool may repeat; the remembered text resets at session start. The reply is shown:
 
@@ -137,9 +139,11 @@ Editor emptiness checks ignore whitespace-only text.
 ```
 
 4. The shortcut writes it into the editor; the hint always shows the shortcut you configured. If the editor already has text, you get a notice instead of an overwrite.
-5. `/jev-suggest` refreshes manually in TUI mode when the editor is empty and reports failures (missing API key, HTTP status, timeout, network failure, invalid JSON or an off-contract response). It does nothing while the editor has text.
+5. `/jev-suggest` refreshes manually in TUI mode when the editor is empty and reports failures (missing API key, cooldown, HTTP status, timeout, network failure, invalid JSON or an off-contract response). It does nothing while the editor has text.
 
-A new input event, run start, session start or shutdown clears the suggestion and cancels any pending request. A new request also cancels the previous one. Requests carry a deadline, and stale results are dropped. Typing into the editor while JEV is pending prevents the result from being shown if the editor is still nonempty when it arrives; insertion also rechecks editor emptiness.
+Automatic requests are governed by `auto` and `minIntervalMs`: `auto: false` turns them off entirely, leaving only the manual `/jev-suggest`. The cooldown is measured from the start of any request attempt (manual ones, failures, timeouts and cancellations included); automatic requests inside it are skipped, not queued or retried, while manual requests bypass it and run immediately. The interval can be set up to one day, so `{ "minIntervalMs": "1d" }` means at most one automatic suggestion per day. Session changes do not reset the cooldown, but reloading the extension or starting a new process does. Separate Pi processes do not share it, so this is not a global spending cap. Cancellation does not guarantee the server won't charge.
+
+A new input event, run start, session start, tree navigation or shutdown clears the suggestion and cancels any pending request. A new request after the cooldown also cancels the previous one. Requests carry a deadline, and stale results are dropped. Typing into the editor while JEV is pending prevents the result from being shown if the editor is still nonempty when it arrives; insertion also rechecks editor emptiness.
 
 ### What is sent, and confidentiality limits
 

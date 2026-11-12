@@ -15,6 +15,10 @@ export interface SuggestConfig {
   /** User-supplied locale JSON; mutually exclusive with `locale`. */
   localeFile?: string;
   shortcut: string;
+  /** Whether requests are sent automatically after settled runs; `false` keeps `/jev-suggest` manual. */
+  auto: boolean;
+  /** Minimum time since the last request attempt before the next automatic request. */
+  minIntervalMs: number;
   jev: JevEndpoint;
   tags: readonly CustomTag[];
   /** Reply pools that replace a tag's pool, keyed by tag id. */
@@ -50,11 +54,30 @@ const NAMED_KEYS = new Set([
   ...Array.from({ length: 12 }, (_, index) => `f${index + 1}`),
 ]);
 const SYMBOL_KEYS = new Set("`-=[];',./!@#$%^&*()_+|~{}:<>?".split(""));
-const TOP_KEYS = ["locale", "localeFile", "shortcut", "jev", "tags", "options"];
+const TOP_KEYS = ["locale", "localeFile", "shortcut", "auto", "minIntervalMs", "jev", "tags", "options"];
 const JEV_KEYS = ["url", "model", "keyEnv", "identity", "timeoutMs"];
+
+export const MIN_INTERVAL_MS = 1_000;
+export const MAX_INTERVAL_MS = 86_400_000;
+
+const DURATION = /^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?(?:(\d+)ms)?$/;
+const UNIT_MS = [86_400_000, 3_600_000, 60_000, 1_000, 1] as const;
+
+/** Parses canonical descending durations like "1d", "6h", "1h30m", "45s", "250ms" into milliseconds. */
+export function parseDuration(text: string): number | undefined {
+  const match = DURATION.exec(text);
+  if (!match || match.slice(1).every((group) => group === undefined)) return undefined;
+  let total = 0;
+  for (const [index, group] of match.slice(1).entries()) {
+    total += (group === undefined ? 0 : Number(group)) * UNIT_MS[index]!;
+  }
+  return Number.isSafeInteger(total) ? total : undefined;
+}
 
 export const DEFAULTS: Omit<SuggestConfig, "locale" | "localeFile"> = {
   shortcut: "ctrl+space",
+  auto: true,
+  minIntervalMs: 30_000,
   jev: {
     url: "https://api.typesafe.ai/v1/systemone",
     model: "jev-1.13.0",
@@ -155,6 +178,20 @@ export function parseConfig(raw: unknown, path: string, builtinIds: readonly str
     return fail(`shortcut 不是合法按键：${JSON.stringify(raw.shortcut)}`);
   }
 
+  const auto = raw.auto === undefined ? DEFAULTS.auto : raw.auto;
+  if (typeof auto !== "boolean") return fail(`auto 只能是 true/false：${JSON.stringify(raw.auto)}`);
+
+  const minIntervalRaw = raw.minIntervalMs === undefined ? DEFAULTS.minIntervalMs : raw.minIntervalMs;
+  let minIntervalMs: number | undefined =
+    typeof minIntervalRaw === "number" && Number.isInteger(minIntervalRaw) ? minIntervalRaw : undefined;
+  if (minIntervalMs === undefined && typeof minIntervalRaw === "string") minIntervalMs = parseDuration(minIntervalRaw);
+  if (minIntervalMs === undefined || minIntervalMs < MIN_INTERVAL_MS || minIntervalMs > MAX_INTERVAL_MS) {
+    return fail(
+      `minIntervalMs 必须是 ${MIN_INTERVAL_MS}-${MAX_INTERVAL_MS} 的整数毫秒或时长字符串` +
+        `（如 "45s"、"10m"、"1h30m"、"1d"）：${JSON.stringify(minIntervalRaw)}`,
+    );
+  }
+
   const jev = raw.jev === undefined ? {} : raw.jev;
   if (!isRecord(jev)) return fail("jev 必须是对象");
   const unknownJev = Object.keys(jev).filter((key) => !JEV_KEYS.includes(key));
@@ -194,6 +231,8 @@ export function parseConfig(raw: unknown, path: string, builtinIds: readonly str
       ...(locale === undefined ? {} : { locale }),
       ...(localeFile === undefined ? {} : { localeFile: expandHome(localeFile) }),
       shortcut,
+      auto,
+      minIntervalMs,
       jev: { url, model, keyEnv, identity: identity as JevIdentity, timeoutMs },
       tags: tags.value,
       options: options.value,
