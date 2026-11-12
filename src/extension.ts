@@ -26,11 +26,11 @@ const WIDGET_KEY = "jev-suggest";
 const COMMAND = "jev-suggest";
 const QUESTION_ID = "next_request";
 const QUESTION_TEXT =
-  "Which single request is the user most likely to type next, given this coding session? " +
-  "If the assistant's reply states remaining work or an obvious next step, choose continue. " +
-  "If it reports a change with no verification, choose verify. " +
-  "Choose status only when progress is genuinely unclear. " +
-  "If the user has just pushed back on the result, choose correct.";
+  "Predict the single request the user is most likely to type next, given this coding session. " +
+  "Use the latest exchange as evidence, not as a request to repeat. " +
+  "Match the supplied criteria and prefer a specific action over generic continuation. " +
+  "An acknowledgment does not imply permission for further actions. " +
+  "Choose only among the supplied options.";
 /** Unicode code points kept from each side of the exchange sent to JEV. */
 const STATE_CHARS = 1_200;
 

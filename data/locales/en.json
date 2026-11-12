@@ -15,105 +15,133 @@
     "continue": {
       "label": "continue",
       "replies": [
-        "continue",
-        "keep going",
-        "go with your suggestion",
-        "carry on, no need to ask me",
-        "finish it",
-        "proceed, tell me if you get blocked",
-        "continue with the plan, report when done",
-        "keep going, stop only where I need to decide"
+        "continue within the agreed scope",
+        "keep going with the already authorized work",
+        "proceed within the existing scope and approval boundaries",
+        "continue with the agreed plan, pause where confirmation is needed",
+        "keep going without expanding this task",
+        "finish the remaining work we already agreed on"
       ]
     },
     "plan": {
-      "label": "plan first",
+      "label": "plan for approval",
       "replies": [
-        "analyze first, don't touch the code yet",
-        "give me the plan and risks, I'll confirm",
-        "lay out the current state and unknowns",
-        "explain what you intend to do before starting",
-        "break it into steps and confirm each",
-        "find the root cause before deciding the fix",
-        "assess the blast radius, then propose the change",
-        "state the trade-offs, then pick one"
+        "analyze the situation, approach and risks; wait for my confirmation before editing",
+        "give me the implementation plan and impact, then wait for approval",
+        "explain the approach and risks first; don't change code yet",
+        "lay out the constraints and unknowns, then propose a plan for my confirmation",
+        "define acceptance criteria and implementation steps; don't edit before confirmation",
+        "explain the trade-offs and recommendation, then wait for approval to implement"
       ]
     },
     "correct": {
-      "label": "challenge",
+      "label": "recheck reasoning",
       "replies": [
-        "no, check your premise first",
-        "are you sure? verify it again",
-        "this is not what I asked for; explain why",
-        "push back on me and find the flaw in my reasoning",
-        "you missed a hard constraint",
-        "give me the evidence before concluding",
-        "the evidence is thin, look again",
-        "stop, let's re-align on the requirement"
+        "recheck the premise and evidence before changing any code",
+        "verify the basis for that conclusion first; don't edit code",
+        "recheck the conclusion against the requirements and constraints before making changes",
+        "separate verified facts from assumptions and correct the conclusion, not the code",
+        "pause changes and check whether you misunderstood the requirement",
+        "revisit the reasoning and missed constraints before changing code"
       ]
     },
     "simplify": {
       "label": "simplify",
       "replies": [
-        "simplify it, don't over-engineer",
-        "smallest change that works",
-        "drop unnecessary abstractions",
-        "reuse what exists instead of a new layer",
-        "this is too complex, write it plainly",
-        "ship the minimal usable version first",
-        "no defensive code for hypothetical cases",
-        "delete the intermediate artifacts, keep the final state"
+        "simplify this implementation while preserving required behavior and necessary checks",
+        "use a smaller change for the same behavior; keep the necessary checks",
+        "drop unnecessary abstractions without weakening functionality or verification",
+        "reuse the existing structure and reduce complexity without changing expected behavior",
+        "write the implementation plainly without sacrificing functionality or necessary checks",
+        "remove code that doesn't serve this task while keeping required behavior"
       ]
     },
     "status": {
       "label": "status",
       "replies": [
-        "where are you? one line",
-        "still running?",
-        "what's the state and what's blocking",
-        "how many steps left, roughly how long",
-        "if you're stuck, say so",
-        "list what's done and what's not",
-        "show me the intermediate result",
-        "what's happening now?"
+        "report what's done, verified, blocked and remaining; don't rerun checks",
+        "where are we? list existing results and remaining work without starting anything new",
+        "report current progress, separating completed work from unverified items; don't rerun checks",
+        "summarize existing progress, verification and blockers without continuing execution yet",
+        "report completion and next steps using the results you already have",
+        "give me the current progress and unresolved items; don't repeat verification just to report"
       ]
     },
     "verify": {
       "label": "verify",
       "replies": [
-        "run the smallest verification",
-        "confirm the original failure is reproduced and fixed",
-        "paste the test results",
-        "check for callers you may have missed",
-        "verify before committing",
-        "look at real output, not just type checks",
-        "confirm there is no regression",
-        "review your own diff"
+        "run the relevant existing checks and report actual results and unverified items",
+        "verify real behavior against the requirements; show results and remaining gaps",
+        "run the smallest necessary verification and say what passed and what remains unverified",
+        "inspect real output, not just type checks, and report the verification evidence",
+        "verify this change meets the requirements and list results and uncovered areas",
+        "run the relevant existing verification and separate passed, failed and unrun checks"
       ]
     },
     "style": {
-      "label": "wording",
+      "label": "concise wording",
       "replies": [
-        "answer in English",
-        "plain language, no fluff",
-        "shorter, lead with the conclusion",
-        "conclusion first, then the reasoning",
-        "skip the boilerplate, say what matters",
-        "give it as a list",
-        "don't repeat what I said",
-        "be concrete, include an example"
+        "shorter, conclusion first; keep the necessary evidence and risks",
+        "lead with the conclusion and key evidence without dropping important limitations",
+        "tighten the wording, conclusion first, without losing necessary information",
+        "skip the preamble; give the result first, then the necessary evidence",
+        "remove boilerplate and repetition; keep the conclusion, evidence and important limitations",
+        "be more direct, lead with the conclusion, and retain the key risks"
       ]
     },
     "feedback": {
-      "label": "ack",
+      "label": "acknowledge",
       "replies": [
-        "ok, that works",
         "got it",
+        "understood",
         "thanks",
-        "good, next step",
-        "nice, keep this direction",
-        "looks right, go with it",
-        "that's the way, remember it",
-        "fine for now, let me look"
+        "ok, received",
+        "noted",
+        "got it, thanks"
+      ]
+    },
+    "review": {
+      "label": "review changes",
+      "replies": [
+        "review these changes; list findings by severity with locations, without editing",
+        "check defects, omissions and compatibility; give locations and severity, don't edit code",
+        "review callers and boundary conditions; only report findings, locations and severity",
+        "review against the requirements; list findings, locations and impact, don't fix them yet",
+        "inspect this implementation for issues; give locations, evidence and severity without editing",
+        "review the current diff first; report defect locations and severity without making changes"
+      ]
+    },
+    "fix": {
+      "label": "fix issues",
+      "replies": [
+        "fix these confirmed issues and verify the result without expanding scope",
+        "repair the issues already identified here, then run relevant verification",
+        "apply the fix for the confirmed root cause, stay within this issue and verify it",
+        "fix the defects found in this task and verify the repair; no unrelated changes",
+        "repair the confirmed failure and check the result without extending the task",
+        "address the issues just identified and verify afterward; leave unrelated parts alone"
+      ]
+    },
+    "commit": {
+      "label": "local commit",
+      "replies": [
+        "commit only this task's changes locally; don't push",
+        "make a local commit of the changes for this task, without pushing",
+        "check the diff and commit this task's changes locally only",
+        "write the commit message and commit these changes; don't push yet",
+        "create a local Git commit for this task only, excluding unrelated changes",
+        "commit this task's completed changes locally, without pushing to the remote"
+      ]
+    },
+    "handoff": {
+      "label": "session handoff",
+      "replies": [
+        "reply with a handoff summary: goal, decisions, paths, verification and next steps; don't write files",
+        "output a summary for the next session with progress, key decisions, paths and remaining work; don't write files",
+        "hand off this task in your reply: goal, completed work, verification, blockers and paths; don't save files",
+        "summarize what a new session needs, including decisions, paths and verification gaps; reply only",
+        "output a task handoff covering the goal, decisions, results, paths and remaining steps; don't save it to a file",
+        "explain the context, completion, paths and next steps for a new session in your reply, without editing files"
       ]
     }
   }

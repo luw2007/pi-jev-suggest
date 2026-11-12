@@ -3,35 +3,51 @@
   "tags": [
     {
       "id": "continue",
-      "criteria": "Proceed with the current work without new analysis or confirmation."
+      "criteria": "Continue already authorized, unfinished work within the agreed scope and approval boundaries. Use only when no more specific action fits; do not expand permissions or treat acknowledgment as authorization."
     },
     {
       "id": "plan",
-      "criteria": "Analyze, plan, or explain before changing anything."
+      "criteria": "Analyze the current situation, propose an approach and its risks, then wait for confirmation before changing code. Planning only, not implementing a fix or explaining completed work."
     },
     {
       "id": "correct",
-      "criteria": "Challenge or correct the assistant's premise, evidence, or conclusion."
+      "criteria": "Recheck a disputed premise, requirement interpretation, evidence or conclusion and correct the reasoning before making changes. Not a request to repair an already identified code defect."
     },
     {
       "id": "simplify",
-      "criteria": "Reduce complexity, over-engineering, or scope."
+      "criteria": "Simplify the current implementation with minimal, focused changes while preserving required behavior and necessary checks. Remove unnecessary complexity, not required functionality or approval boundaries."
     },
     {
       "id": "status",
-      "criteria": "Ask about progress, current state, blockers, or remaining work."
+      "criteria": "Report current progress: completed work, verification already performed, blockers and remaining work. Report existing results without starting new work; not a portable handoff for another session."
     },
     {
       "id": "verify",
-      "criteria": "Require verification, testing, or delivery evidence."
+      "criteria": "Run relevant existing checks and inspect actual behavior against the requirements, then report evidence and unverified items. Especially relevant after a change without verification evidence. Not a code review or permission to add permanent tests."
     },
     {
       "id": "style",
-      "criteria": "Change how the answer is written: language, length, or format."
+      "criteria": "Rewrite the answer more concisely and directly, leading with the conclusion while preserving necessary evidence, caveats and the current language. Change presentation only, not the task, implementation or explanation depth."
     },
     {
       "id": "feedback",
-      "criteria": "Acknowledge, approve, thank, or give brief evaluative feedback."
+      "criteria": "Briefly acknowledge receipt or thank the assistant, without requesting more work, approving a pending action or asking to remember a preference."
+    },
+    {
+      "id": "review",
+      "criteria": "Review the current changes for defects, missed requirements and compatibility risks; report findings with locations and severity without editing code. Not running verification checks or fixing findings."
+    },
+    {
+      "id": "fix",
+      "criteria": "Repair already identified defects or failing checks within the current task, then verify the repair. Especially relevant after review findings or a reproduced failure; not merely planning, reviewing or challenging a conclusion."
+    },
+    {
+      "id": "commit",
+      "criteria": "Create a local Git commit containing only the current task's changes. Relevant when implementation and verification are complete. Do not include pushing, opening a PR, merging, releasing or deploying."
+    },
+    {
+      "id": "handoff",
+      "criteria": "Output a self-contained handoff summary for another session: goal, decisions, completed work, relevant paths, verification, blockers and next steps. Do not write files or persist instructions; not just a brief progress report."
     }
   ]
 }

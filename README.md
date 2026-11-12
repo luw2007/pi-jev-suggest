@@ -4,7 +4,28 @@
 
 A [Pi](https://pi.dev) suggestion extension, version **0.3.1**. When a run ends, **JEV** decides which kind of request you are about to type, and one reply from that tag's pool is offered under the editor. Press your shortcut to put it in the editor. Nothing is ever sent for you.
 
-JEV only makes one closed-set decision (one of N tags). It never writes the reply text. Latency and token usage depend on the endpoint, state text and configured tags; neither is fixed. The reply text comes from the tag's pool: eight built-in tags times eight replies, plus anything you add.
+JEV only makes one closed-set decision (one of N tags). It never writes the reply text. Latency and token usage depend on the endpoint, state text and configured tags; neither is fixed. The reply text comes from small, intent-consistent pools for twelve built-in tags, plus anything you add.
+
+## Built-in intents
+
+| Tag | Next request |
+| --- | --- |
+| `continue` | Continue already authorized work within existing scope and approval boundaries |
+| `plan` | Analyze, propose an approach and risks, then wait for confirmation before editing |
+| `correct` | Recheck disputed reasoning or requirements before making changes |
+| `simplify` | Simplify the implementation without losing required behavior or necessary checks |
+| `status` | Report existing progress, verification, blockers and remaining work; don't start new work |
+| `verify` | Run relevant existing checks and inspect real behavior, then report evidence and gaps |
+| `style` | Make the answer concise and conclusion-first without changing its language or task |
+| `feedback` | Acknowledge receipt or thank the assistant, without authorizing further action |
+| `review` | Report defects, omissions and compatibility risks with locations and severity; don't edit |
+| `fix` | Repair already identified problems within scope and verify the repair |
+| `commit` | Commit only this task's changes locally; no push, PR, merge, release or deployment |
+| `handoff` | Reply with a self-contained summary for another session; don't write files |
+
+JEV predicts the **next** request, not the category of the previous input. A specific matching action takes precedence over generic continuation. `review` inspects code, `verify` exercises behavior, and `fix` repairs known problems; `status` reports current results, while `handoff` prepares context for another session.
+
+Replies in one pool vary the wording, not the action or permission. Push, deployment, permanent memory updates, language changes and learning requests are not bundled into these built-ins. A suggested request is still only inserted into the editor, never executed or sent automatically.
 
 ## Install
 
@@ -64,23 +85,27 @@ The widget shows the configured key; displaying a hint does not mean the termina
 
 ### Add your own tags
 
-A tag is a classification option: `id` is what JEV answers, `label` is what the widget shows, `criteria` is the model-facing description, `replies` is the pool to pick from. Custom tags are appended to the eight built-ins and sent in the same request.
+A tag is a classification option: `id` is what JEV answers, `label` is what the widget shows, `criteria` is the model-facing description, `replies` is the pool to pick from. Custom tags are appended to the twelve built-ins and sent in the same request.
 
 ```json
 {
   "locale": "en",
   "tags": [
     {
-      "id": "ship",
-      "label": "ship it",
-      "criteria": "Ship or deploy the change, e.g. release, publish, roll out.",
-      "replies": ["ship it", "cut the release", "deploy to staging", "publish the package"]
+      "id": "explain",
+      "label": "explain the implementation",
+      "criteria": "Explain how the completed implementation works and why it was designed this way, without editing code. Not planning future work or merely shortening an answer.",
+      "replies": [
+        "explain how this implementation works and why, without changing code",
+        "walk me through the implementation and design decisions; don't edit code",
+        "help me understand the current implementation and its rationale, without changes"
+      ]
     }
   ]
 }
 ```
 
-Rules: `id` must match `^[a-z][a-z0-9_-]{0,31}$`, must not reuse a built-in id (`continue`, `plan`, `correct`, `simplify`, `status`, `verify`, `style`, `feedback`), and must be unique. Write tags in your own language — `label` and `replies` are never translated for you.
+Rules: `id` must match `^[a-z][a-z0-9_-]{0,31}$`, must not reuse any id in the built-in intents table, and must be unique. Write tags in your own language — `label` and `replies` are never translated for you. Keep every reply in a pool equivalent in action and permission; separate committing, pushing and deploying into distinct custom intents if you need them.
 
 ### Replace the replies of any tag
 
@@ -89,7 +114,10 @@ Rules: `id` must match `^[a-z][a-z0-9_-]{0,31}$`, must not reuse a built-in id (
 ```json
 {
   "options": {
-    "verify": ["run the tests", "paste the output", "check the callers"]
+    "verify": [
+      "run the relevant existing checks and report results and gaps",
+      "verify actual behavior against the requirements and report the evidence"
+    ]
   }
 }
 ```
@@ -105,7 +133,7 @@ Editor emptiness checks ignore whitespace-only text.
 3. Before showing a result, the extension rechecks that the editor is empty. It picks a random reply from the selected tag's pool, excluding every entry equal to the last offered text if there is an alternative. An identical-only pool may repeat; the remembered text resets at session start. The reply is shown:
 
 ```text
-[jev] suggestion (verify): run the smallest verification    ctrl+space to insert
+[jev] suggestion (verify): run the relevant existing checks and report actual results and unverified items    ctrl+space to insert
 ```
 
 4. The shortcut writes it into the editor; the hint always shows the shortcut you configured. If the editor already has text, you get a notice instead of an overwrite.
@@ -153,7 +181,9 @@ Tags, labels, replies and UI text are data, not code:
 - `data/tags.json` — the classification set: tag `id` plus the model-facing `criteria` (English by design, so the request is stable across languages).
 - `data/locales/<name>.json` — `ui` templates and a `label` plus reply pool for every tag id.
 
-Both carry `"schema": 1`. The loader checks the schema, requires every UI key and every tag id, and **ignores unknown keys**, so a newer data file still works with an older extension. A breaking shape change bumps `schema` and the loader refuses it with the file and the reason.
+Both carry `"schema": 1`. The loader checks the schema, requires every UI key and every tag id, and **ignores unknown keys**. Extra keys are tolerated, but missing required tags are not. A breaking shape change bumps `schema` and the loader refuses it with the file and the reason.
+
+When upgrading from the eight-tag set, add `review`, `fix`, `commit` and `handoff` (each with `label` and `replies`) to any private `localeFile`, using the bundled locale as a template. Otherwise setup reports the first missing tag and disables suggestions; there is no silent language fallback. If an existing custom tag uses one of those four ids, rename it, or remove it from `tags` and use `options` to replace the new built-in's reply pool. Existing `options` entries still replace entire pools, so review them for consistent actions and permissions.
 
 UI strings are templates: `{label}`, `{text}`, `{hint}`, `{shortcut}`, `{env}`, `{error}`, `{detail}`.
 

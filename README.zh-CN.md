@@ -4,7 +4,28 @@
 
 [Pi](https://pi.dev) 建议扩展，版本 **0.3.1**。一轮运行结束后，由 **JEV** 判断你接下来会输入哪一类请求，再从该 tag 的候选里取一条显示在输入框下方；按快捷键填入输入框，**不会替你发送**。
 
-JEV 只做一次闭集判断（N 选 1），不生成候选文本。延迟和 token 消耗取决于端点、状态文本及配置的 tag，并非固定值。候选文本来自 tag 的回复池：内置 8 个 tag × 8 条，也可以自己加。
+JEV 只做一次闭集判断（N 选 1），不生成候选文本。延迟和 token 消耗取决于端点、状态文本及配置的 tag，并非固定值。候选文本来自内置 12 个 tag 的小型回复池，每个池保持动作语义一致，也可以自己加。
+
+## 内置意图
+
+| Tag | 下一条请求 |
+| --- | --- |
+| `continue` | 在既定范围和确认要求内，继续已授权的工作 |
+| `plan` | 分析现状、方案和风险，等确认后再改代码 |
+| `correct` | 复核有争议的推理或需求理解，暂不修改代码 |
+| `simplify` | 简化实现，保留要求的行为和必要检查 |
+| `status` | 汇报已有进展、验证、阻塞和待办，不启动新工作 |
+| `verify` | 运行相关现有检查、观察实际行为，报告证据和缺口 |
+| `style` | 表达简短直接、结论优先，不改变语言或任务 |
+| `feedback` | 仅确认收到或感谢，不授权后续行动 |
+| `review` | 审查缺陷、遗漏和兼容性，给出位置和严重程度，不修改 |
+| `fix` | 修复已明确的问题，保持范围并验证修复 |
+| `commit` | 仅将本轮改动提交到本地，不推送、建 PR、合并、发布或部署 |
+| `handoff` | 在回复中输出可供新会话接手的摘要，不写文件 |
+
+JEV 预测的是**下一条**请求，不是给上一条输入贴标签。具体动作优先于泛化的继续执行。`review` 检查代码，`verify` 验证行为，`fix` 修复已知问题；`status` 汇报当前结果，`handoff` 准备跨会话上下文。
+
+同一池中的候选只改变措辞，不改变动作或授权。推送、部署、永久记忆、切换语言和学习讲解不混入这些内置池。建议仍只会填入输入框，不自动执行或发送。
 
 ## 安装
 
@@ -47,7 +68,7 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 | `jev.keyEnv` | `TYPESAFE_API_KEY` | 存放 bearer token 的**环境变量名**，token 不写进配置文件 |
 | `jev.identity` | `exact` | 响应 `model` 校验方式：`exact` / `prefix` / `none`（自建服务常用 `none`） |
 | `jev.timeoutMs` | `8000` | 单次请求总超时，500–60000 |
-| `tags` | `[]` | 自定义 tag，追加在内置 8 个之后 |
+| `tags` | `[]` | 自定义 tag，追加在内置 12 个之后 |
 | `options` | `{}` | 按 tag id 替换该 tag 的候选池 |
 
 ### 快捷键兼容性
@@ -62,23 +83,27 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 
 ### 添加自己的 tag
 
-一个 tag 就是一个分类选项：`id` 是 JEV 的返回值，`label` 是界面显示名，`criteria` 是给模型看的判定标准，`replies` 是候选池。自定义 tag 会追加到内置 8 个之后，并在同一次请求里一起发给 JEV。
+一个 tag 就是一个分类选项：`id` 是 JEV 的返回值，`label` 是界面显示名，`criteria` 是给模型看的判定标准，`replies` 是候选池。自定义 tag 会追加到内置 12 个之后，并在同一次请求里一起发给 JEV。
 
 ```json
 {
   "locale": "zh-CN",
   "tags": [
     {
-      "id": "ship",
-      "label": "发布上线",
-      "criteria": "Ship or deploy the change, e.g. release, publish, roll out.",
-      "replies": ["发布吧", "打包上线", "先发测试环境", "推个 release"]
+      "id": "explain",
+      "label": "理解实现",
+      "criteria": "Explain how the completed implementation works and why it was designed this way, without editing code. Not planning future work or merely shortening an answer.",
+      "replies": [
+        "解释当前实现怎么工作、为什么这样设计，不改代码",
+        "带我梳理当前实现和设计取舍，不要修改代码",
+        "帮我理解现有实现及其设计理由，先不做改动"
+      ]
     }
   ]
 }
 ```
 
-约束：`id` 需匹配 `^[a-z][a-z0-9_-]{0,31}$`，不能与内置 id（`continue`、`plan`、`correct`、`simplify`、`status`、`verify`、`style`、`feedback`）重名，且不可重复。`label` 和 `replies` 用你自己的语言即可，扩展不会替你翻译。
+约束：`id` 需匹配 `^[a-z][a-z0-9_-]{0,31}$`，不能与内置意图表中的任何 id 重名，且不可重复。`label` 和 `replies` 用你自己的语言即可，扩展不会替你翻译。同一池中的候选应保持动作和授权一致；如果需要提交、推送或部署，应分别定义意图，不要混在一个池里。
 
 ### 替换任意 tag 的候选
 
@@ -87,7 +112,10 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 ```json
 {
   "options": {
-    "verify": ["跑一下测试", "把输出贴出来", "检查一下调用方"]
+    "verify": [
+      "跑相关的现有检查，报告结果和未验证项",
+      "对照需求验证实际行为，并给出证据"
+    ]
   }
 }
 ```
@@ -103,7 +131,7 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 3. 显示结果前再次确认输入框为空。从选中 tag 的候选池随机取一条；如果有其他文本可选，就排除所有与上一次展示文本相同的条目。只有相同文本的池允许重复；新会话会重置记忆。候选显示为：
 
 ```text
-[jev] 建议（验证交付）：跑一下最小验证    ctrl+space 插入
+[jev] 建议（验证结果）：跑一下相关的现有检查，并报告实际结果和未验证项    ctrl+space 插入
 ```
 
 4. 快捷键把建议写入输入框，末尾提示始终显示你配置的按键；输入框已有内容时只提示、不覆盖。
@@ -151,7 +179,9 @@ pi -e git:github.com/luw2007/pi-jev-suggest
 - `data/tags.json`：分类集合，即 tag 的 `id` 与给模型看的 `criteria`（刻意固定英文，保证请求跨语言稳定）。
 - `data/locales/<name>.json`：`ui` 模板，以及每个 tag 的 `label` 和候选池。
 
-两者都带 `"schema": 1`。加载器会校验 schema、要求 UI 键与 tag id 齐全，并且**忽略未知字段**，因此新数据文件可以在旧版扩展上继续工作；破坏性结构调整会提升 `schema`，旧版会直接拒绝并报出文件与原因。
+两者都带 `"schema": 1`。加载器会校验 schema、要求 UI 键与 tag id 齐全，并且**忽略未知字段**。多余字段可以兼容，但缺失必需 tag 不可以。破坏性结构调整会提升 `schema`，旧版会直接拒绝并报出文件与原因。
+
+从八分类版本升级时，私有 `localeFile` 需补齐 `review`、`fix`、`commit`、`handoff` 的 `label` 和 `replies`，可参考包内语言文件。缺失时会报告第一个缺少的 tag 并停用建议，不会静默混用其他语言。如果已有自定义 tag 使用这四个 id 之一，请重命名，或从 `tags` 中移除并用 `options` 覆盖对应内置池。已有 `options` 仍会整体替换候选池，建议检查其中动作和授权是否一致。
 
 界面文案是模板：`{label}`、`{text}`、`{hint}`、`{shortcut}`、`{env}`、`{error}`、`{detail}`。
 
